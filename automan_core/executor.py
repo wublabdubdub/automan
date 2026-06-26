@@ -10,7 +10,6 @@ from datetime import datetime
 from pathlib import Path
 
 from automan_core.config import load_yaml, write_json
-from automan_core.database_config import apply_database_params
 from automan_core.models import RunSpec, Target
 from automan_core.ssh import CommandResult
 
@@ -29,37 +28,19 @@ def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: 
         _set_campaign_status(campaign_dir, "failed")
         return
 
-    applied_config_params: dict[tuple[str, ...], dict[str, str]] = {}
     for target in targets:
-        if target.apply_params:
-            config_key = _config_key(target)
-            previous_params = applied_config_params.get(config_key)
-            if previous_params is not None:
-                if previous_params != target.accepted_params:
-                    message = "conflicting accepted database parameters for the same configuration target"
-                    _append_timeline(
-                        campaign_dir,
-                        {
-                            "event": "database_config_conflict",
-                            "target": target.id,
-                            "config_key": list(config_key),
-                            "previous_params": previous_params,
-                            "current_params": target.accepted_params,
-                        },
-                    )
-                    _mark_target_pre_run_failed(campaign_dir, target.id, "database_config_conflict", message)
-                    _set_campaign_status(campaign_dir, "failed")
-                    return
-                _append_timeline(campaign_dir, {"event": "database_config_reused", "target": target.id, "config_key": list(config_key)})
-                continue
-            applied_config_params[config_key] = dict(target.accepted_params)
-            results = apply_database_params(target.profile, target.connection, target.accepted_params)
-            _append_timeline(campaign_dir, {"event": "database_config_applied", "target": target.id, "results": [_result_dict(r) for r in results]})
-            if any(result.exit_code != 0 for result in results):
-                failed = next(result for result in results if result.exit_code != 0)
-                _mark_target_pre_run_failed(campaign_dir, target.id, "database_config", failed.stderr or failed.stdout)
-                _set_campaign_status(campaign_dir, "failed")
-                return
+        if target.manual_parameter_commands:
+            _append_timeline(
+                campaign_dir,
+                {
+                    "event": "manual_parameter_commands_declared",
+                    "target": target.id,
+                    "message": "database parameter changes are manual-only and were not executed by automan",
+                },
+            )
+    if not runs:
+        _set_campaign_status(campaign_dir, "success")
+        return
 
     runs_by_host: dict[str, list[RunSpec]] = {}
     target_by_id = {target.id: target for target in targets}
@@ -177,17 +158,6 @@ def _preflight_benchmarksql(root: Path) -> CommandResult:
 
 def _scheduling_host(target: Target) -> str:
     return target.connection.db_host or target.connection.ssh_host
-
-
-def _config_key(target: Target) -> tuple[str, ...]:
-    return (
-        target.connection.ssh_host,
-        str(target.connection.ssh_port),
-        target.profile.database_type,
-        target.connection.postgresql_conf or "",
-        target.connection.gpconfig_command or "",
-        target.connection.restart_command or "",
-    )
 
 
 def _preflight_execution_host(targets: list[Target]) -> CommandResult:
@@ -363,18 +333,6 @@ def _mark_run_finished(campaign_dir: Path, target_id: str, failed: bool) -> None
                 target["status"] = "running"
             target["current_run"] = None
             target["current_phase"] = None
-    progress["running_runs"] = sum(1 for target in progress["targets"] if target.get("current_run"))
-    write_json(campaign_dir / "progress.json", progress)
-
-
-def _mark_target_pre_run_failed(campaign_dir: Path, target_id: str, phase: str, message: str) -> None:
-    progress = load_yaml(campaign_dir / "progress.json")
-    for target in progress["targets"]:
-        if target["target_id"] == target_id:
-            target["status"] = "failed"
-            target["current_run"] = None
-            target["current_phase"] = phase
-            target["last_error"] = message.strip()
     progress["running_runs"] = sum(1 for target in progress["targets"] if target.get("current_run"))
     write_json(campaign_dir / "progress.json", progress)
 

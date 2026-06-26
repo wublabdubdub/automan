@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from automan_core.interactive import run_interactive_campaign
 from automan_core.progress import show_progress
+from automan_core.task_runner import run_task_campaign
 from automan_core.tooling import build_benchmarksql_on_linux, prompt_remote_execution_host
 
 
@@ -12,7 +12,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="automan")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    run_parser = subparsers.add_parser("run", help="start an interactive TPC-C campaign")
+    run_parser = subparsers.add_parser("run", help="start a TPC-C campaign from a task YAML")
+    run_parser.add_argument("--task", required=True, help="task YAML path")
     run_parser.add_argument("--plan-only", action="store_true", help="write the campaign plan without executing")
 
     progress_parser = subparsers.add_parser("progress", help="show campaign progress")
@@ -33,7 +34,7 @@ def main() -> None:
     root = Path.cwd()
 
     if args.command == "run":
-        run_interactive_campaign(root=root, plan_only=args.plan_only)
+        run_task_campaign(root=root, task_path=Path(args.task), plan_only=args.plan_only)
     elif args.command == "progress":
         show_progress(root=root, campaign_id=args.campaign, watch=args.watch, interval=args.interval)
     elif args.command == "tools" and args.tools_command == "build-benchmarksql":

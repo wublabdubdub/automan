@@ -113,7 +113,7 @@ docs/runs-structure.md
   每次测试运行的 runs/ 结果目录结构，定义归档文件、指标、日志和报告上下文的位置。
 
 docs/tpcc-automan-flow.md
-  当前 TPC-C-only 阶段的 automan run / automan progress 完整交互与执行流程。
+  当前 TPC-C-only 阶段的 task.yaml 模板、automan run --task 和 automan progress 执行流程。
 ```
 
 ## 执行位置约束

@@ -86,7 +86,9 @@ def write_campaign_files(
                 "host_facts": target.host_facts,
                 "recommended_params": target.recommended_params,
                 "accepted_params": target.accepted_params,
-                "apply_params": target.apply_params,
+                "apply_params": False,
+                "parameter_application": "manual_only",
+                "manual_parameter_commands": target.manual_parameter_commands,
                 "mars3_options": target.mars3_options,
                 "ddl_profile": target.profile.ddl_profile,
                 "ddl_dir": target.profile.ddl_dir,
@@ -126,10 +128,11 @@ def write_campaign_files(
             "runDatabaseBuild.sh",
             "runBenchmark.sh",
         ],
-        "destroy_policy": "first_run_per_target_skips_destroy",
+        "destroy_policy": "schema_probe_then_destroy_if_needed",
     }
     write_yaml(campaign_dir / "campaign.yaml", plan)
     write_yaml(campaign_dir / "resolved-plan.yaml", plan)
+    _write_manual_parameter_commands(campaign_dir, targets)
 
     progress = {
         "campaign_id": campaign_id,
@@ -180,7 +183,7 @@ def write_campaign_files(
                 "benchmark_run_dir": str(run.benchmark_run_dir),
                 "skip_destroy": run.skip_destroy,
                 "command_sequence": [
-                    *([] if run.skip_destroy else ["runDatabaseDestroy.sh"]),
+                    *(["schema_probe", "runDatabaseDestroy.sh when bmsql_* exists"] if run.skip_destroy else ["runDatabaseDestroy.sh"]),
                     "runDatabaseBuild.sh",
                     "runBenchmark.sh",
                 ],
@@ -188,3 +191,23 @@ def write_campaign_files(
         )
         write_json(run_dir / "status.json", {"run_id": run.run_id, "status": "pending", "phase": None})
     return campaign_dir
+
+
+def _write_manual_parameter_commands(campaign_dir: Path, targets: list[Target]) -> None:
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "",
+        "# This file is generated for manual review/execution.",
+        "# automan does not execute database parameter changes.",
+        "",
+    ]
+    for target in targets:
+        lines.append(f"# target: {target.id}")
+        if not target.manual_parameter_commands:
+            lines.append("# no parameter commands declared")
+        else:
+            lines.extend(target.manual_parameter_commands)
+        lines.append("")
+    path = campaign_dir / "manual-parameter-commands.sh"
+    path.write_text("\n".join(lines), encoding="utf-8")

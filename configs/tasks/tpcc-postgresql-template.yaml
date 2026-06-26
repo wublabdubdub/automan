@@ -1,0 +1,91 @@
+# benchmark: 当前阶段只支持 tpcc。
+benchmark: tpcc
+
+# execution: automan 和 BenchmarkSQL 实际运行的位置。
+execution:
+  # host: 执行机 IP。正式执行固定为 172.16.100.143。
+  host: 172.16.100.143
+  # port: 执行机 SSH 端口，仅用于记录和本机校验。
+  port: 22
+  # user: 执行机用户，仅用于记录。
+  user: root
+  # workdir: 执行机上的 automan 目录。
+  workdir: /root/automan
+
+# matrix: TPC-C 压测矩阵。
+matrix:
+  # warehouses: 仓数列表。每个仓数都会和 terminals 做笛卡尔积。
+  warehouses: [100]
+  # terminals: 并发终端数列表。
+  terminals: [100, 500]
+  # load_workers: BenchmarkSQL 装载数据时的并发 worker 数。
+  load_workers: 32
+  # run_mins: 每个压测 run 的持续分钟数。
+  run_mins: 15
+
+# targets: 本次要压测的一个或多个数据库目标。
+targets:
+  # id: target 的唯一标识，会进入 run_id。多套 PG/YMatrix 同时测时必须不同。
+  - id: postgresql_heap_single_node
+    # profile: 数据库形态模板，来自 configs/database-profiles。
+    profile: postgresql_heap_single_node
+
+    # connection: 连接信息。automan 只用 database 连接做压测，不再登录配置机改参数。
+    connection:
+      # config_ssh: 配置机信息，仅用于生成参数修改命令和记录，不由 automan 执行。
+      config_ssh:
+        # host: 数据库配置机 IP。
+        host: 192.168.100.29
+        # port: 数据库配置机 SSH 端口。
+        port: 22
+        # user: 手动执行参数修改命令时建议使用的 OS 用户。
+        user: 12pg
+        # password: 不建议写明文；需要时可临时填写，计划文件会脱敏。
+        password: ""
+        # workdir: 配置机工作目录，仅用于记录。
+        workdir: /home/12pg/automan
+
+      # database: BenchmarkSQL JDBC 连接目标。
+      database:
+        # host: 数据库监听 IP。
+        host: 192.168.100.29
+        # port: 数据库监听端口。
+        port: 5232
+        # name: 压测数据库名。
+        name: postgres
+        # user: 压测数据库用户。
+        user: zhangchen
+        # password: 压测数据库密码。
+        password: ""
+
+      # postgresql_conf: PostgreSQL 配置文件路径，仅用于生成手工参数修改命令。
+      postgresql_conf: /home/12pg/data/postgresql.conf
+      # restart_command: 手工应用参数后建议执行的重启命令，automan 不会执行。
+      restart_command: pg_ctl restart -D /home/12pg/data
+
+    # host_facts: 主机规格记录。用于复盘，不由 automan 自动探测。
+    host_facts:
+      # cpu_threads: CPU 线程数。
+      cpu_threads: 64
+      # memory_gb: 内存 GB。
+      memory_gb: 251
+
+    # database_parameters: 推荐或确认后的数据库参数。automan 只生成手工命令，不会执行。
+    database_parameters:
+      # max_connections: 最大连接数，应大于最大 terminals 并留出管理连接余量。
+      max_connections: "550"
+      # shared_buffers: PostgreSQL shared_buffers，通常取内存的 20%-30% 起步。
+      shared_buffers: 62GB
+      # effective_cache_size: 优化器估算可用缓存，通常取内存的 60%-75%。
+      effective_cache_size: 175GB
+      # work_mem: 单个排序/hash 操作内存，需结合并发数控制总量。
+      work_mem: 116MB
+      # maintenance_work_mem: 建索引、维护操作内存，影响 BenchmarkSQL build 阶段。
+      maintenance_work_mem: 12GB
+      # checkpoint_timeout: checkpoint 周期，压测时可适当放大。
+      checkpoint_timeout: 30min
+      # max_wal_size: WAL 最大尺寸，压测装载阶段建议放大。
+      max_wal_size: 64GB
+
+    # manual_parameter_commands: 可选。为空时 automan 根据 database_parameters 自动生成手工命令。
+    manual_parameter_commands: []

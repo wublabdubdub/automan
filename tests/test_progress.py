@@ -23,7 +23,7 @@ class ProgressTest(unittest.TestCase):
                     "database_host": "192.168.100.29",
                     "status": "failed",
                     "current_run": None,
-                    "current_phase": "database_config",
+                    "current_phase": "manual_parameter_review",
                     "finished_runs": 0,
                     "total_runs": 2,
                     "last_error": "sudo requires a password",
@@ -35,7 +35,7 @@ class ProgressTest(unittest.TestCase):
         with redirect_stdout(out):
             _print_progress(progress)
 
-        self.assertIn("database_config", out.getvalue())
+        self.assertIn("manual_parameter_review", out.getvalue())
         self.assertIn("sudo requires a password", out.getvalue())
 
 

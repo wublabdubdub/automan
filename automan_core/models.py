@@ -71,10 +71,12 @@ class Target:
     apply_params: bool
     host_facts: dict[str, str | int]
     mars3_options: dict[str, Any] = field(default_factory=dict)
+    manual_parameter_commands: list[str] = field(default_factory=list)
+    target_id: str | None = None
 
     @property
     def id(self) -> str:
-        return self.profile.id
+        return self.target_id or self.profile.id
 
 
 @dataclass(frozen=True)

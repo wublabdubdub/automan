@@ -115,7 +115,7 @@ requirements.txt 中的 Python 依赖
 python -m automan_core tools build-benchmarksql --host 172.16.100.143 --user root --remote-workdir /root/automan
 ```
 
-该命令会在 Linux 执行机的 `/root/automan/tools/benchmarksql` 下运行 `ant`，然后把远端 `dist/` 拉回本地 `tools/benchmarksql/dist/`。正式执行 `./automan run` 前，本地和执行机都应该已经同步这个 `dist/` 目录。
+该命令会在 Linux 执行机的 `/root/automan/tools/benchmarksql` 下运行 `ant`，然后把远端 `dist/` 拉回本地 `tools/benchmarksql/dist/`。正式执行 `./automan run --task <task.yaml>` 前，本地和执行机都应该已经同步这个 `dist/` 目录。
 
 TPC-C 固定执行顺序：
 

@@ -16,7 +16,7 @@ Run from the remote path:
 
 ```bash
 cd /root/automan
-./automan run
+./automan run --task configs/tasks/tpcc-postgresql-template.yaml
 ```
 
 The execution host must provide:
@@ -37,29 +37,39 @@ python -m automan_core tools build-benchmarksql --host 172.16.100.143 --user roo
 
 The command runs `ant` on the Linux execution host and downloads the generated `tools/benchmarksql/dist/` back to the source workspace. Sync the project to `/root/automan` again after this step.
 
-## Interactive Selection
+## Task Template
 
-`automan run` uses hierarchical selection:
+`automan run` no longer asks for interactive database parameters. Every campaign must be started from a task YAML:
 
-```text
-database type -> storage engine -> test mode
+```bash
+./automan run --task <task.yaml>
 ```
 
-Single-option steps are skipped and applied as defaults.
-
-Current options:
+Current templates:
 
 ```text
-PostgreSQL:
-  storage_engine: heap
-  test_mode: single_node
-
-YMatrix:
-  storage_engine: heap | mars3
-  test_mode: master_only
+configs/tasks/tpcc-postgresql-template.yaml
+configs/tasks/tpcc-ymatrix-template.yaml
 ```
 
-The selected combinations resolve to database profiles:
+Each task YAML declares:
+
+```text
+execution host
+TPC-C matrix
+one or more targets
+database profile
+database connection
+database parameters for manual review
+optional manual parameter commands
+MARS3 DDL options when needed
+```
+
+Every template field carries an inline YAML comment. Parameters such as `max_connections`, `shared_buffers`, `gpconfig_command`, `restart_command`, and MARS3 options must be reviewed in the template before execution.
+
+## Database Profiles
+
+Targets refer to database profiles by id:
 
 ```text
 postgresql_heap_single_node
@@ -67,80 +77,46 @@ ymatrix_heap_master_only
 ymatrix_mars3_master_only
 ```
 
-## Server And Database Input
+## Manual Parameter Commands
 
-For each target, the user enters:
+`automan` does not modify database parameters, does not run `gpconfig`, does not edit `postgresql.conf`, and does not restart databases.
 
-```text
-execution host
-execution SSH port
-execution SSH user
-execution SSH password
-execution automan path
-configuration SSH host
-configuration SSH port
-configuration SSH user
-configuration SSH password
-configuration workdir
-database host
-database port
-database name
-database user
-database password
-```
-
-PostgreSQL also asks for:
+For each campaign it writes:
 
 ```text
-postgresql.conf path
-PostgreSQL restart command
+runs/campaigns/<campaign_id>/manual-parameter-commands.sh
 ```
 
-YMatrix also asks for:
+This file is generated from `database_parameters` unless `manual_parameter_commands` is explicitly set in the task YAML.
+
+PostgreSQL commands include:
 
 ```text
-gpconfig command path
-YMatrix restart command
+backup postgresql.conf
+write automan managed settings block
+run the declared restart command
+show each changed parameter
 ```
 
-The default YMatrix restart command is:
-
-```bash
-mxstop -afr
-```
-
-## Host Probe And Parameter Application
-
-After configuration SSH input, `automan` probes CPU and memory on the database configuration host. `automan run` must be started on the configured execution host; the runner checks the local host markers before doing destructive work.
-
-It recommends database parameters. After user confirmation:
-
-PostgreSQL:
+YMatrix commands include:
 
 ```text
-1. Backup postgresql.conf.
-2. Write an automan-managed settings block.
-3. Run the user-provided PostgreSQL restart command.
+gpconfig -c <name> -v <value>
+the declared restart command, usually mxstop -afr
+show each changed parameter
 ```
 
-The restart command is executed with stdout/stderr redirected to a temporary log file and then replayed into the campaign timeline. This prevents database daemon processes started by `pg_ctl` from inheriting the SSH channel and making `automan` wait until timeout after a successful restart.
+The user must execute and verify these commands manually before starting the actual pressure test, or run `--plan-only` first, apply the commands, and then run the task normally.
 
-YMatrix:
+## Execution Boundary
 
-```text
-1. Run gpconfig -c <name> -v <value> for each parameter.
-2. Run mxstop -afr.
-```
+`automan` only performs the actual TPC-C pressure test. It uses the database connection in the task YAML to run BenchmarkSQL and schema probes. It does not SSH to the config host during benchmark execution.
 
-The user can also choose not to apply parameters.
-
-If multiple selected targets point to the same configuration host and database parameter control path, `automan` applies parameters only once when the accepted parameter sets are identical. If the accepted parameter sets differ, the campaign fails before benchmark execution so the user must choose one canonical parameter set.
-
-After restart, `automan` verifies parameter values by comparing the `show <parameter>` result with the accepted value. Common boolean, memory, and duration units are normalized before comparison.
+`automan run` must be started on the configured execution host; the runner checks local host markers before doing destructive work.
 
 ## TPC-C Matrix
 
-The user enters:
+The task YAML defines:
 
 ```text
 warehouses: multi-value
@@ -161,7 +137,7 @@ Example:
 
 ## MARS3 DDL Options
 
-If YMatrix mars3 is selected, the user confirms:
+If a YMatrix mars3 target is declared, the task YAML sets:
 
 ```text
 prefer_load_mode [single]
