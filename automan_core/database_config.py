@@ -43,7 +43,7 @@ else:
     text = text.rstrip() + "\\n\\n" + block
 path.write_text(text)
 PY
-{connection.restart_command}
+{_logged_shell_command(connection.restart_command, "postgresql_restart")}
 """
     results = [ssh.run(script, timeout=300)]
     if results[-1].exit_code == 0:
@@ -59,10 +59,26 @@ def _apply_ymatrix(ssh: SSHClient, connection: ConnectionInfo, params: dict[str,
         if results[-1].exit_code != 0:
             return results
     restart = connection.restart_command or "mxstop -afr"
-    results.append(ssh.run(restart, timeout=900))
+    results.append(ssh.run(_logged_shell_command(restart, "ymatrix_restart"), timeout=900))
     if results[-1].exit_code == 0:
         results.extend(_verify_params(ssh, connection, params))
     return results
+
+
+def _logged_shell_command(command: str, label: str) -> str:
+    quoted_label = shlex.quote(label)
+    return f"""
+_automan_log=$(mktemp /tmp/automan-{quoted_label}.XXXXXX.log)
+set +e
+(
+{command}
+) > "${{_automan_log}}" 2>&1
+_automan_rc=$?
+set -e
+cat "${{_automan_log}}"
+rm -f "${{_automan_log}}"
+exit "${{_automan_rc}}"
+"""
 
 
 def _verify_params(ssh: SSHClient, connection: ConnectionInfo, params: dict[str, str]) -> list[CommandResult]:

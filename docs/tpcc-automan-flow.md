@@ -123,6 +123,8 @@ PostgreSQL:
 3. Run the user-provided PostgreSQL restart command.
 ```
 
+The restart command is executed with stdout/stderr redirected to a temporary log file and then replayed into the campaign timeline. This prevents database daemon processes started by `pg_ctl` from inheriting the SSH channel and making `automan` wait until timeout after a successful restart.
+
 YMatrix:
 
 ```text
