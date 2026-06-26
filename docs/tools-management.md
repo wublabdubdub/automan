@@ -101,6 +101,14 @@ JDK 8
 Ant
 ```
 
+本地 Windows 源目录不直接构建 BenchmarkSQL。构建流程固定为：
+
+```bash
+python -m automan_core tools build-benchmarksql --host 172.16.100.143 --user root --remote-workdir /root/automan
+```
+
+该命令会在 Linux 执行机的 `/root/automan/tools/benchmarksql` 下运行 `ant`，然后把远端 `dist/` 拉回本地 `tools/benchmarksql/dist/`。正式执行 `./automan run` 前，本地和执行机都应该已经同步这个 `dist/` 目录。
+
 TPC-C 固定执行顺序：
 
 ```text
@@ -109,4 +117,4 @@ tools/benchmarksql/run/runDatabaseBuild.sh
 tools/benchmarksql/run/runBenchmark.sh
 ```
 
-框架实现时必须对每次 TPC-C run 执行完整三段流程，不允许直接跳过 destroy/build 后单独运行 benchmark。
+框架实现时必须对每个 target 的后续 TPC-C run 执行完整三段流程，不允许直接跳过 build 后单独运行 benchmark。每个 target 的第一条 run 会带有 `skip_destroy=true` 标记，只执行 build 和 benchmark，避免空库首次执行 `runDatabaseDestroy.sh` 失败。

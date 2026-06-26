@@ -16,6 +16,7 @@ def new_campaign_id() -> str:
 def build_run_specs(root: Path, campaign_id: str, targets: list[Target], matrix: TpccMatrix) -> list[RunSpec]:
     specs: list[RunSpec] = []
     for target in targets:
+        is_first_target_run = True
         for warehouse in matrix.warehouses:
             for terminals in matrix.terminals:
                 run_id = f"{campaign_id}-{target.id}-w{warehouse}-c{terminals}"
@@ -34,8 +35,10 @@ def build_run_specs(root: Path, campaign_id: str, targets: list[Target], matrix:
                         properties_path=properties_path,
                         work_dir=work_dir,
                         benchmark_run_dir=work_dir / "benchmarksql" / "run",
+                        skip_destroy=is_first_target_run,
                     )
                 )
+                is_first_target_run = False
     return specs
 
 
@@ -110,6 +113,7 @@ def write_campaign_files(
                 "properties_path": str(run.properties_path),
                 "work_dir": str(run.work_dir),
                 "benchmark_run_dir": str(run.benchmark_run_dir),
+                "skip_destroy": run.skip_destroy,
             }
             for run in runs
         ],
@@ -122,6 +126,7 @@ def write_campaign_files(
             "runDatabaseBuild.sh",
             "runBenchmark.sh",
         ],
+        "destroy_policy": "first_run_per_target_skips_destroy",
     }
     write_yaml(campaign_dir / "campaign.yaml", plan)
     write_yaml(campaign_dir / "resolved-plan.yaml", plan)
@@ -171,8 +176,9 @@ def write_campaign_files(
                 "benchmarksql_properties": str(run.properties_path),
                 "work_dir": str(run.work_dir),
                 "benchmark_run_dir": str(run.benchmark_run_dir),
+                "skip_destroy": run.skip_destroy,
                 "command_sequence": [
-                    "runDatabaseDestroy.sh",
+                    *([] if run.skip_destroy else ["runDatabaseDestroy.sh"]),
                     "runDatabaseBuild.sh",
                     "runBenchmark.sh",
                 ],

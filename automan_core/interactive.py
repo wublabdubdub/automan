@@ -51,6 +51,7 @@ def run_interactive_campaign(root: Path, plan_only: bool) -> None:
     for profile in selected_profiles:
         print(f"  - {profile.id}: {profile.display_name}")
 
+    execution = _prompt_execution_context()
     matrix_seed = _prompt_matrix_seed()
     target_connections: list[Target] = []
     reusable_connections: list[ConnectionInfo] = []
@@ -59,7 +60,7 @@ def run_interactive_campaign(root: Path, plan_only: bool) -> None:
     for profile in selected_profiles:
         print()
         print(f"配置 target: {profile.id}")
-        connection = _prompt_connection(profile.database_type, reusable_connections)
+        connection = _prompt_connection(profile.database_type, reusable_connections, execution)
         reusable_connections.append(connection)
         facts = probe_host(SSHClient(connection.ssh_host, connection.ssh_port, connection.ssh_user, connection.ssh_password))
         _print_facts(facts)
@@ -87,6 +88,10 @@ def run_interactive_campaign(root: Path, plan_only: bool) -> None:
     campaign_id = new_campaign_id()
     runs = build_run_specs(root, campaign_id, target_connections, matrix)
     _print_plan(target_connections, matrix, runs, mars3_options)
+    if plan_only:
+        campaign_dir = write_campaign_files(root, campaign_id, target_connections, matrix, runs, mars3_options)
+        print(f"plan-only 模式，已写入计划但不执行: {campaign_dir}")
+        return
     if not _yes_no("是否开始执行? [y/N]", default=False):
         campaign_dir = write_campaign_files(root, campaign_id, target_connections, matrix, runs, mars3_options)
         print(f"已写入计划但未执行: {campaign_dir}")
@@ -94,9 +99,6 @@ def run_interactive_campaign(root: Path, plan_only: bool) -> None:
 
     campaign_dir = write_campaign_files(root, campaign_id, target_connections, matrix, runs, mars3_options)
     print(f"Campaign 已生成: {campaign_dir}")
-    if plan_only:
-        print("plan-only 模式，不执行。")
-        return
     execute_campaign(root, campaign_id, target_connections, runs)
     print("Campaign 执行结束。可运行 ./automan progress 查看状态。")
 
@@ -115,22 +117,35 @@ def _prompt_matrix(load_workers_default: int, seed: TpccMatrix) -> TpccMatrix:
     return TpccMatrix(seed.warehouses, seed.terminals, load_workers, run_mins)
 
 
-def _prompt_connection(database_type: str, reusable: list[ConnectionInfo]) -> ConnectionInfo:
+def _prompt_execution_context() -> dict[str, str | int]:
+    print()
+    print("执行机配置（automan 和 BenchmarkSQL 实际运行的位置）")
+    return {
+        "execution_host": _prompt("执行机 host", default="172.16.100.143"),
+        "execution_port": _prompt_int("执行机 SSH port", default=22),
+        "execution_user": _prompt("执行机 SSH user", default="root"),
+        "execution_password": _prompt_secret_optional("执行机 SSH password（仅用于工具构建/同步，可留空）"),
+        "execution_workdir": _prompt("执行机 automan 路径", default="/root/automan"),
+    }
+
+
+def _prompt_connection(database_type: str, reusable: list[ConnectionInfo], execution: dict[str, str | int]) -> ConnectionInfo:
     if reusable:
         print("可复用已有服务器配置:")
         for idx, conn in enumerate(reusable, start=1):
-            print(f"  [{idx}] {conn.ssh_host} / {conn.ssh_user}")
+            print(f"  [{idx}] config={conn.ssh_host}/{conn.ssh_user}, db={conn.db_host}:{conn.db_port}")
         print(f"  [{len(reusable) + 1}] 新增服务器")
         choice = _prompt_int("请选择", default=len(reusable) + 1)
         if 1 <= choice <= len(reusable):
             base = reusable[choice - 1]
             return _prompt_database_connection(database_type, base)
 
-    ssh_host = _prompt("SSH host")
-    ssh_port = _prompt_int("SSH port", default=22)
-    ssh_user = _prompt("SSH user")
-    ssh_password = _prompt_secret("SSH password")
-    remote_workdir = _prompt("远端工作目录", default="/root/automan")
+    print("数据库配置 SSH（用于探测 CPU/内存、改 postgresql.conf 或执行 gpconfig/mxstop）")
+    ssh_host = _prompt("配置 SSH host")
+    ssh_port = _prompt_int("配置 SSH port", default=22)
+    ssh_user = _prompt("配置 SSH user")
+    ssh_password = _prompt_secret("配置 SSH password")
+    remote_workdir = _prompt("配置 SSH 工作目录", default="/root/automan")
     base = ConnectionInfo(
         ssh_host=ssh_host,
         ssh_port=ssh_port,
@@ -142,6 +157,11 @@ def _prompt_connection(database_type: str, reusable: list[ConnectionInfo]) -> Co
         db_name="postgres",
         db_user="",
         db_password="",
+        execution_host=str(execution["execution_host"]),
+        execution_port=int(execution["execution_port"]),
+        execution_user=str(execution["execution_user"]),
+        execution_password=str(execution["execution_password"]),
+        execution_workdir=str(execution["execution_workdir"]),
     )
     return _prompt_database_connection(database_type, base)
 
@@ -175,6 +195,11 @@ def _prompt_database_connection(database_type: str, base: ConnectionInfo) -> Con
         postgresql_conf=postgresql_conf,
         restart_command=restart_command,
         gpconfig_command=gpconfig_command,
+        execution_host=base.execution_host,
+        execution_port=base.execution_port,
+        execution_user=base.execution_user,
+        execution_password=base.execution_password,
+        execution_workdir=base.execution_workdir,
     )
 
 
@@ -231,7 +256,9 @@ def _print_plan(targets: list[Target], matrix: TpccMatrix, runs: list, mars3_opt
     print("Targets:")
     for target in targets:
         print(f"  - {target.id}")
-        print(f"    host: {target.connection.ssh_host}")
+        print(f"    execution: {target.connection.execution_host}:{target.connection.execution_workdir}")
+        print(f"    config ssh: {target.connection.ssh_host}")
+        print(f"    database: {target.connection.db_host}:{target.connection.db_port}/{target.connection.db_name}")
         print(f"    ddl: {target.profile.ddl_profile}")
     print("TPC-C Matrix:")
     print(f"  warehouses: {', '.join(map(str, matrix.warehouses))}")
@@ -241,11 +268,13 @@ def _print_plan(targets: list[Target], matrix: TpccMatrix, runs: list, mars3_opt
     if mars3_options:
         print(f"MARS3: {mars3_options}")
     print(f"Total Runs: {len(runs)}")
-    print("每个 run 固定执行:")
+    print("执行顺序:")
+    print("  target 的第一条 run: runDatabaseBuild.sh -> runBenchmark.sh")
+    print("  target 的后续 run:")
     print("  runDatabaseDestroy.sh")
     print("  runDatabaseBuild.sh")
     print("  runBenchmark.sh")
-    print("调度: 同服务器串行，不同服务器并行")
+    print("调度: 同数据库 host 串行，不同数据库 host 并行")
 
 
 def _print_facts(facts: dict[str, str | int]) -> None:
@@ -303,6 +332,10 @@ def _prompt_secret(prompt: str) -> str:
     return _prompt_secret(prompt)
 
 
+def _prompt_secret_optional(prompt: str) -> str:
+    return getpass(f"{prompt}: ").strip()
+
+
 def _prompt_int(prompt: str, default: int | None = None) -> int:
     while True:
         raw = _prompt(prompt, str(default) if default is not None else None)
@@ -317,4 +350,3 @@ def _yes_no(prompt: str, default: bool) -> bool:
     if not value:
         return default
     return value in {"y", "yes"}
-

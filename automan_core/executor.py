@@ -16,9 +16,25 @@ from automan_core.ssh import CommandResult
 def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: list[RunSpec]) -> None:
     campaign_dir = root / "runs" / "campaigns" / campaign_id
     _set_campaign_status(campaign_dir, "running")
+    preflight = _preflight_benchmarksql(root)
+    if preflight.exit_code != 0:
+        _append_timeline(campaign_dir, {"event": "preflight_failed", "results": [_result_dict(preflight)]})
+        _set_campaign_status(campaign_dir, "failed")
+        return
 
+    applied_config_keys: set[tuple[str, int, str, str]] = set()
     for target in targets:
         if target.apply_params:
+            config_key = (
+                target.connection.ssh_host,
+                target.connection.ssh_port,
+                target.profile.database_type,
+                target.connection.db_name,
+            )
+            if config_key in applied_config_keys:
+                _append_timeline(campaign_dir, {"event": "database_config_reused", "target": target.id, "config_key": list(config_key)})
+                continue
+            applied_config_keys.add(config_key)
             results = apply_database_params(target.profile, target.connection, target.accepted_params)
             _append_timeline(campaign_dir, {"event": "database_config_applied", "target": target.id, "results": [_result_dict(r) for r in results]})
             if any(result.exit_code != 0 for result in results):
@@ -28,7 +44,7 @@ def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: 
     runs_by_host: dict[str, list[RunSpec]] = {}
     target_by_id = {target.id: target for target in targets}
     for run in runs:
-        host = target_by_id[run.target_id].connection.ssh_host
+        host = _scheduling_host(target_by_id[run.target_id])
         runs_by_host.setdefault(host, []).append(run)
 
     had_exception = False
@@ -66,10 +82,13 @@ def _execute_run(root: Path, campaign_id: str, target: Target, run: RunSpec) -> 
     _prepare_benchmark_run_dir(root, target, run)
 
     commands = [
-        ("runDatabaseDestroy.sh", ["./runDatabaseDestroy.sh", str(run.properties_path)]),
         ("runDatabaseBuild.sh", ["./runDatabaseBuild.sh", str(run.properties_path)]),
         ("runBenchmark.sh", ["./runBenchmark.sh", str(run.properties_path)]),
     ]
+    if not run.skip_destroy:
+        commands.insert(0, ("runDatabaseDestroy.sh", ["./runDatabaseDestroy.sh", str(run.properties_path)]))
+    else:
+        _append_timeline(campaign_dir, {"event": "phase_skipped", "run_id": run.run_id, "target": run.target_id, "phase": "runDatabaseDestroy.sh", "reason": "first_run_per_target"})
     for phase, command in commands:
         _set_run_status(run_dir, "running", phase)
         _update_progress(campaign_dir, run.target_id, "running", run.run_id, phase)
@@ -94,6 +113,27 @@ def _prepare_benchmark_run_dir(root: Path, target: Target, run: RunSpec) -> None
     _install_ddl_profile(root, target, run)
     if target.profile.storage_engine == "mars3":
         _render_mars3_table_creates(run.benchmark_run_dir, target.mars3_options)
+
+
+def _preflight_benchmarksql(root: Path) -> CommandResult:
+    tool_dir = root / "tools" / "benchmarksql"
+    dist_dir = tool_dir / "dist"
+    if not dist_dir.exists() or not any(dist_dir.iterdir()):
+        return CommandResult(
+            command="preflight benchmarksql dist",
+            exit_code=1,
+            stdout="",
+            stderr=(
+                "BenchmarkSQL dist/ is missing. Run "
+                "python -m automan_core tools build-benchmarksql --host 172.16.100.143 --user root "
+                "from the source workspace, then sync the project to the execution host."
+            ),
+        )
+    return CommandResult(command="preflight benchmarksql dist", exit_code=0, stdout=str(dist_dir), stderr="")
+
+
+def _scheduling_host(target: Target) -> str:
+    return target.connection.db_host or target.connection.ssh_host
 
 
 def _install_ddl_profile(root: Path, target: Target, run: RunSpec) -> None:

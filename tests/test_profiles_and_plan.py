@@ -49,6 +49,11 @@ class ProfileAndPlanTest(unittest.TestCase):
 
         self.assertEqual(len(runs), 18)
         self.assertIn("campaign-ymatrix_mars3_master_only-w1000-c1000", {run.run_id for run in runs})
+        first_by_target = {}
+        for run in runs:
+            first_by_target.setdefault(run.target_id, run)
+        self.assertTrue(all(run.skip_destroy for run in first_by_target.values()))
+        self.assertEqual(sum(1 for run in runs if run.skip_destroy), len(targets))
 
     def test_write_campaign_files_redacts_passwords(self) -> None:
         profiles = load_database_profiles(self.root)
@@ -80,10 +85,11 @@ class ProfileAndPlanTest(unittest.TestCase):
             plan = (campaign_dir / "resolved-plan.yaml").read_text(encoding="utf-8")
             self.assertIn("ssh_password: '***'", plan)
             self.assertIn("db_password: '***'", plan)
+            self.assertIn("destroy_policy: first_run_per_target_skips_destroy", plan)
+            self.assertIn("skip_destroy: true", plan)
             properties = runs[0].properties_path.read_text(encoding="utf-8")
             self.assertIn("password=db-secret", properties)
 
 
 if __name__ == "__main__":
     unittest.main()
-

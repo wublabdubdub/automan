@@ -66,7 +66,7 @@ def _apply_ymatrix(ssh: SSHClient, connection: ConnectionInfo, params: dict[str,
 
 def _verify_params(ssh: SSHClient, connection: ConnectionInfo, params: dict[str, str]) -> list[CommandResult]:
     results: list[CommandResult] = []
-    for key in params:
+    for key, expected in params.items():
         sql = f"show {key};"
         psql = (
             f"PGPASSWORD={shlex.quote(connection.db_password)} psql "
@@ -98,7 +98,26 @@ def _verify_params(ssh: SSHClient, connection: ConnectionInfo, params: dict[str,
             stdout=result.stdout,
             stderr=result.stderr,
         )
+        if result.exit_code == 0:
+            actual = _last_nonempty_line(result.stdout)
+            if _normalize_param_value(actual) != _normalize_param_value(expected):
+                result = CommandResult(
+                    command=redacted_command,
+                    exit_code=2,
+                    stdout=f"expected={expected}\nactual={actual}\nraw={result.stdout}",
+                    stderr="parameter value mismatch after restart",
+                )
         results.append(result)
         if result.exit_code != 0:
             return results
     return results
+
+
+def _last_nonempty_line(text: str) -> str:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
+def _normalize_param_value(value: str) -> str:
+    normalized = value.strip().strip("'\"").lower()
+    return "".join(normalized.split())

@@ -4,11 +4,21 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from automan_core.executor import _prepare_benchmark_run_dir
+from automan_core.executor import _preflight_benchmarksql, _prepare_benchmark_run_dir
 from automan_core.models import ConnectionInfo, DatabaseProfile, RunSpec, Target
 
 
 class ExecutorPreparationTest(unittest.TestCase):
+    def test_preflight_requires_linux_built_benchmarksql_dist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "tools/benchmarksql").mkdir(parents=True)
+
+            result = _preflight_benchmarksql(root)
+
+            self.assertNotEqual(result.exit_code, 0)
+            self.assertIn("build-benchmarksql", result.stderr)
+
     def test_prepare_run_dir_renders_mars3_options_without_touching_global_tool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

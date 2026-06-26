@@ -33,9 +33,19 @@ class ConnectionInfo:
     postgresql_conf: str | None = None
     restart_command: str | None = None
     gpconfig_command: str = "gpconfig"
+    execution_host: str = "172.16.100.143"
+    execution_port: int = 22
+    execution_user: str = "root"
+    execution_password: str = ""
+    execution_workdir: str = "/root/automan"
 
     def redacted(self) -> dict[str, Any]:
         return {
+            "execution_host": self.execution_host,
+            "execution_port": self.execution_port,
+            "execution_user": self.execution_user,
+            "execution_password": "***" if self.execution_password else "",
+            "execution_workdir": self.execution_workdir,
             "ssh_host": self.ssh_host,
             "ssh_port": self.ssh_port,
             "ssh_user": self.ssh_user,
@@ -88,3 +98,4 @@ class RunSpec:
     properties_path: Path
     work_dir: Path
     benchmark_run_dir: Path
+    skip_destroy: bool = False

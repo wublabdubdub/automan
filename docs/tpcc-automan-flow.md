@@ -19,6 +19,14 @@ cd /root/automan
 ./automan run
 ```
 
+BenchmarkSQL must be built on Linux before a campaign starts. From the source workspace, run:
+
+```bash
+python -m automan_core tools build-benchmarksql --host 172.16.100.143 --user root --remote-workdir /root/automan
+```
+
+The command runs `ant` on the Linux execution host and downloads the generated `tools/benchmarksql/dist/` back to the source workspace. Sync the project to `/root/automan` again after this step.
+
 ## Interactive Selection
 
 `automan run` uses hierarchical selection:
@@ -54,11 +62,16 @@ ymatrix_mars3_master_only
 For each target, the user enters:
 
 ```text
-SSH host
-SSH port
-SSH user
-SSH password
-remote workdir
+execution host
+execution SSH port
+execution SSH user
+execution SSH password
+execution automan path
+configuration SSH host
+configuration SSH port
+configuration SSH user
+configuration SSH password
+configuration workdir
 database host
 database port
 database name
@@ -88,7 +101,7 @@ mxstop -afr
 
 ## Host Probe And Parameter Application
 
-After SSH input, `automan` probes CPU and memory through SSH.
+After configuration SSH input, `automan` probes CPU and memory on the database configuration host.
 
 It recommends database parameters. After user confirmation:
 
@@ -178,7 +191,20 @@ Other SQL files stay aligned with BenchmarkSQL defaults.
 
 ## Per-Run Sequence
 
-Every TPC-C run must execute the full BenchmarkSQL sequence:
+The first run for each target is marked with:
+
+```text
+skip_destroy: true
+```
+
+It executes:
+
+```bash
+runDatabaseBuild.sh
+runBenchmark.sh
+```
+
+Later runs for the same target execute the full BenchmarkSQL sequence:
 
 ```bash
 runDatabaseDestroy.sh
@@ -186,7 +212,7 @@ runDatabaseBuild.sh
 runBenchmark.sh
 ```
 
-Skipping destroy/build is not allowed.
+Skipping build is never allowed. Destroy is skipped only for the first run per target to avoid failing against an empty database.
 
 Each run gets an isolated BenchmarkSQL working copy:
 
@@ -204,9 +230,9 @@ work/tpcc/benchmarksql/<run_id>/tpcc.properties
 
 ## Scheduling
 
-Targets on different hosts run in parallel.
+Targets on different database hosts run in parallel.
 
-Targets on the same host run serially in the user-selected order.
+Targets on the same database host run serially in the user-selected order.
 
 ## Progress
 

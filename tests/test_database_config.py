@@ -8,12 +8,13 @@ from automan_core.ssh import CommandResult
 
 
 class FakeSSH:
-    def __init__(self) -> None:
+    def __init__(self, stdout: str = "128\n") -> None:
         self.commands: list[str] = []
+        self.stdout = stdout
 
     def run(self, command: str, timeout: int = 120) -> CommandResult:
         self.commands.append(command)
-        return CommandResult(command=command, exit_code=0, stdout="128\n", stderr="")
+        return CommandResult(command=command, exit_code=0, stdout=self.stdout, stderr="")
 
 
 class DatabaseConfigTest(unittest.TestCase):
@@ -38,7 +39,27 @@ class DatabaseConfigTest(unittest.TestCase):
         self.assertIn("PGPASSWORD=***", results[0].command)
         self.assertNotIn("db-secret", results[0].command)
 
+    def test_verify_params_fails_when_actual_value_differs(self) -> None:
+        ssh = FakeSSH(stdout="64\n")
+        connection = ConnectionInfo(
+            ssh_host="db",
+            ssh_port=22,
+            ssh_user="root",
+            ssh_password="ssh-secret",
+            remote_workdir="/root/automan",
+            db_host="db",
+            db_port=5432,
+            db_name="postgres",
+            db_user="postgres",
+            db_password="db-secret",
+        )
+
+        results = _verify_params(ssh, connection, {"max_connections": "128"})
+
+        self.assertEqual(results[0].exit_code, 2)
+        self.assertIn("expected=128", results[0].stdout)
+        self.assertIn("actual=64", results[0].stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
-
