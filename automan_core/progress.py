@@ -49,3 +49,5 @@ def _print_progress(progress: dict) -> None:
             f"{str(target.get('current_phase') or target.get('status') or '-'):24} "
             f"{done}"
         )
+        if target.get("last_error"):
+            print(f"  error: {target['last_error']}")

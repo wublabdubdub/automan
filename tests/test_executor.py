@@ -174,7 +174,15 @@ DISTRIBUTED MASTERONLY;
             ]
             campaign_dir = root / "runs/campaigns/campaign"
             campaign_dir.mkdir(parents=True)
-            write_json(campaign_dir / "progress.json", {"campaign_id": "campaign", "status": "planned", "targets": [], "failed_runs": 0})
+            write_json(
+                campaign_dir / "progress.json",
+                {
+                    "campaign_id": "campaign",
+                    "status": "planned",
+                    "targets": [{"target_id": profile.id, "status": "pending", "current_run": None, "current_phase": None}],
+                    "failed_runs": 0,
+                },
+            )
             write_json(campaign_dir / "status.json", {"campaign_id": "campaign", "status": "planned"})
 
             old_execution = executor._preflight_execution_host
@@ -193,8 +201,48 @@ DISTRIBUTED MASTERONLY;
 
             status = load_yaml(campaign_dir / "status.json")
             self.assertEqual(status["status"], "failed")
+            progress = load_yaml(campaign_dir / "progress.json")
+            self.assertEqual(progress["targets"][0]["status"], "failed")
+            self.assertEqual(progress["targets"][0]["current_phase"], "database_config_conflict")
             timeline = (campaign_dir / "timeline.jsonl").read_text(encoding="utf-8")
             self.assertIn("database_config_conflict", timeline)
+
+    def test_database_config_failure_marks_target_error_before_runs_start(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            profile = self._profile()
+            target = Target(profile, self._connection(), {}, {"max_connections": "128"}, True, {})
+            campaign_dir = root / "runs/campaigns/campaign"
+            campaign_dir.mkdir(parents=True)
+            write_json(
+                campaign_dir / "progress.json",
+                {
+                    "campaign_id": "campaign",
+                    "status": "planned",
+                    "targets": [{"target_id": profile.id, "status": "pending", "current_run": None, "current_phase": None}],
+                    "failed_runs": 0,
+                },
+            )
+            write_json(campaign_dir / "status.json", {"campaign_id": "campaign", "status": "planned"})
+
+            old_execution = executor._preflight_execution_host
+            old_benchmark = executor._preflight_benchmarksql
+            old_apply = executor.apply_database_params
+            try:
+                executor._preflight_execution_host = lambda targets: CommandResult("execution", 0, "", "")
+                executor._preflight_benchmarksql = lambda root: CommandResult("benchmarksql", 0, "", "")
+                executor.apply_database_params = lambda profile, connection, params: [CommandResult("restart", 1, "", "sudo requires a password")]
+
+                executor.execute_campaign(root, "campaign", [target], [])
+            finally:
+                executor._preflight_execution_host = old_execution
+                executor._preflight_benchmarksql = old_benchmark
+                executor.apply_database_params = old_apply
+
+            progress = load_yaml(campaign_dir / "progress.json")
+            self.assertEqual(progress["targets"][0]["status"], "failed")
+            self.assertEqual(progress["targets"][0]["current_phase"], "database_config")
+            self.assertIn("sudo requires a password", progress["targets"][0]["last_error"])
 
     def _run_fixture(self, root: Path, skip_destroy: bool) -> tuple[Path, Target, RunSpec]:
         profile = self._profile()

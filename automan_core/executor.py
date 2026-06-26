@@ -36,6 +36,7 @@ def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: 
             previous_params = applied_config_params.get(config_key)
             if previous_params is not None:
                 if previous_params != target.accepted_params:
+                    message = "conflicting accepted database parameters for the same configuration target"
                     _append_timeline(
                         campaign_dir,
                         {
@@ -46,6 +47,7 @@ def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: 
                             "current_params": target.accepted_params,
                         },
                     )
+                    _mark_target_pre_run_failed(campaign_dir, target.id, "database_config_conflict", message)
                     _set_campaign_status(campaign_dir, "failed")
                     return
                 _append_timeline(campaign_dir, {"event": "database_config_reused", "target": target.id, "config_key": list(config_key)})
@@ -54,6 +56,8 @@ def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: 
             results = apply_database_params(target.profile, target.connection, target.accepted_params)
             _append_timeline(campaign_dir, {"event": "database_config_applied", "target": target.id, "results": [_result_dict(r) for r in results]})
             if any(result.exit_code != 0 for result in results):
+                failed = next(result for result in results if result.exit_code != 0)
+                _mark_target_pre_run_failed(campaign_dir, target.id, "database_config", failed.stderr or failed.stdout)
                 _set_campaign_status(campaign_dir, "failed")
                 return
 
@@ -359,6 +363,18 @@ def _mark_run_finished(campaign_dir: Path, target_id: str, failed: bool) -> None
                 target["status"] = "running"
             target["current_run"] = None
             target["current_phase"] = None
+    progress["running_runs"] = sum(1 for target in progress["targets"] if target.get("current_run"))
+    write_json(campaign_dir / "progress.json", progress)
+
+
+def _mark_target_pre_run_failed(campaign_dir: Path, target_id: str, phase: str, message: str) -> None:
+    progress = load_yaml(campaign_dir / "progress.json")
+    for target in progress["targets"]:
+        if target["target_id"] == target_id:
+            target["status"] = "failed"
+            target["current_run"] = None
+            target["current_phase"] = phase
+            target["last_error"] = message.strip()
     progress["running_runs"] = sum(1 for target in progress["targets"] if target.get("current_run"))
     write_json(campaign_dir / "progress.json", progress)
 
