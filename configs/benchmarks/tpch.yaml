@@ -1,0 +1,31 @@
+benchmark:
+  type: tpch
+  scale_factor: 1
+  data_dir: data/tpch/sf1
+  sql_dir: benchmarks/tpch/queries
+  schema_dir: benchmarks/tpch/schema
+  queries: all
+  query_order: sequential
+  rounds: 3
+  warmup_rounds: 1
+  timeout_seconds_per_query: 7200
+  validate_result: false
+
+  explain:
+    enabled: true
+    collect_before_run: true
+    collect_after_error: true
+
+  phases:
+    prepare_schema:
+      enabled: true
+      drop_existing: false
+    load_data:
+      enabled: true
+      mode: auto
+      truncate_before_load: false
+    warmup:
+      enabled: true
+    run_benchmark:
+      enabled: true
+

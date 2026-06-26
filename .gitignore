@@ -1,0 +1,25 @@
+# Local secrets and machine-specific memory
+PROJECT_MEMORY.local.md
+.env
+.env.*
+!.env.example
+
+# Runtime outputs
+runs/
+work/
+*.log
+*.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+

@@ -1,0 +1,91 @@
+task:
+  name: ymatrix-vs-doris-tpch-sf1
+  description: TPC-H baseline comparison between Ymatrix and Doris.
+  owner: zhangchen
+  tags:
+    - tpch
+    - baseline
+    - ymatrix
+    - doris
+
+include:
+  databases:
+    - ../databases/ymatrix.yaml
+    - ../databases/doris.yaml
+  benchmark: ../benchmarks/tpch.yaml
+  collectors: ../collectors/default.yaml
+
+run:
+  run_id: auto
+  output_root: runs
+  timezone: Asia/Shanghai
+  keep_raw_files: true
+  fail_fast: false
+
+ansible:
+  inventory: inventories/lab.ini
+  remote_user: zhangchen
+  become: true
+  ssh_common_args: "-o StrictHostKeyChecking=no"
+  groups:
+    ymatrix_hosts:
+      - 172.16.100.29
+    doris_hosts:
+      - 172.16.100.10
+    monitor_hosts:
+      - 172.16.100.29
+      - 172.16.100.10
+
+overrides:
+  benchmark:
+    scale_factor: 1
+    data_dir: data/tpch/sf1
+    rounds: 3
+    warmup_rounds: 1
+
+  databases:
+    ymatrix:
+      target_schema: tpch_sf1
+    doris:
+      database: tpch_sf1
+
+phases:
+  check_env:
+    enabled: true
+  collect_logs:
+    enabled: true
+  report:
+    enabled: true
+
+archive:
+  save_task_snapshot: true
+  save_resolved_config: true
+  redact_secret_values: true
+  save_sql_files: true
+  save_query_outputs: true
+  save_explain_outputs: true
+  save_raw_metrics: true
+  save_remote_logs: true
+
+report:
+  format:
+    - markdown
+  language: zh-CN
+  title: Ymatrix vs Doris TPC-H Baseline Report
+  compare:
+    baseline: ymatrix
+    competitors:
+      - doris
+  include_sections:
+    - summary
+    - environment
+    - benchmark_config
+    - load_data_result
+    - query_latency
+    - failed_queries
+    - resource_usage
+    - perf_stat
+    - explain_summary
+    - findings
+    - next_actions
+

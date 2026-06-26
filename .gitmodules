@@ -1,0 +1,3 @@
+[submodule "tools/benchmarksql"]
+	path = tools/benchmarksql
+	url = https://github.com/petergeoghegan/benchmarksql.git

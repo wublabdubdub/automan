@@ -1,0 +1,35 @@
+collectors:
+  system:
+    enabled: true
+    interval_seconds: 5
+    tools:
+      - uptime
+      - free
+      - df
+      - vmstat
+      - iostat
+      - pidstat
+
+  database:
+    enabled: true
+    collect_version: true
+    collect_session_settings: true
+    collect_table_stats: true
+    collect_backend_status: true
+
+  perf:
+    enabled: true
+    mode: stat
+    target: database_process
+    interval_seconds: 10
+    events:
+      - cycles
+      - instructions
+      - cache-references
+      - cache-misses
+      - branches
+      - branch-misses
+      - context-switches
+      - cpu-migrations
+      - page-faults
+

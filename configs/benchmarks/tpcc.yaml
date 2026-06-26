@@ -1,0 +1,89 @@
+benchmark:
+  type: tpcc
+  scale:
+    warehouses: 10
+    districts_per_warehouse: 10
+    customers_per_district: 3000
+    items: 100000
+
+  tool:
+    name: benchmarksql
+    benchmark: tpcc
+    home: tools/benchmarksql
+    config_template: benchmarks/tpcc/benchmarksql/props.template
+    work_dir: work/tpcc/benchmarksql
+    required_scripts:
+      - runDatabaseDestroy.sh
+      - runDatabaseBuild.sh
+      - runBenchmark.sh
+
+  workload:
+    terminals: 32
+    rampup_seconds: 300
+    run_seconds: 1800
+    isolation_level: read_committed
+    transaction_weights:
+      new_order: 45
+      payment: 43
+      order_status: 4
+      delivery: 4
+      stock_level: 4
+
+  phases:
+    destroy_database:
+      enabled: true
+      script: runDatabaseDestroy.sh
+      required: true
+    build_database:
+      enabled: true
+      script: runDatabaseBuild.sh
+      required: true
+    run_benchmark:
+      enabled: true
+      script: runBenchmark.sh
+      required: true
+    collect_result:
+      enabled: true
+
+  execution:
+    command_sequence:
+      - runDatabaseDestroy.sh
+      - runDatabaseBuild.sh
+      - runBenchmark.sh
+    reset_policy: destroy_build_per_run
+    allow_skip_destroy: false
+    allow_skip_build: false
+    allow_run_without_rebuild: false
+    stop_on_destroy_failure: true
+    stop_on_build_failure: true
+    stop_on_benchmark_failure: true
+
+  loader:
+    parallel_workers: 8
+
+  warmup:
+    enabled: false
+    note: BenchmarkSQL runBenchmark.sh owns the measured run. Warmup requires a separate explicit task if needed.
+
+  result:
+    enabled: true
+    directory_pattern: "tpcc_%tY-%tm-%td_%tH%tM%tS"
+
+  metrics:
+    primary:
+      - tpmc
+      - txn_throughput
+      - latency_p50
+      - latency_p95
+      - latency_p99
+      - abort_rate
+      - error_rate
+    transactions:
+      - new_order
+      - payment
+      - order_status
+      - delivery
+      - stock_level
+
+  timeout_seconds: 10800
+  validate_result: true

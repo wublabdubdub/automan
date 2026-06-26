@@ -1,0 +1,16 @@
+database:
+  name: doris
+  type: doris
+  protocol: mysql
+  host: 172.16.100.10
+  port: 9030
+  database: tpch_sf1
+  user: root
+  password: ""
+  connect_timeout_seconds: 10
+  query_timeout_seconds: 7200
+  role: competitor
+
+  defaults:
+    database_prefix: tpch
+
