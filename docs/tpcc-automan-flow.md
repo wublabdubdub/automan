@@ -19,6 +19,15 @@ cd /root/automan
 ./automan run
 ```
 
+The execution host must provide:
+
+```text
+Python 3.8
+JDK
+Ant
+Python packages from requirements.txt
+```
+
 BenchmarkSQL must be built on Linux before a campaign starts. From the source workspace, run:
 
 ```bash
