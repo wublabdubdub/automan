@@ -1,0 +1,14 @@
+database_profile:
+  id: postgresql_heap_single_node
+  display_name: PostgreSQL heap single node
+  database_type: postgresql
+  storage_engine: heap
+  test_mode: single_node
+
+  tpcc:
+    ddl_profile: postgresql_heap_single_node
+    ddl_dir: benchmarks/tpcc/benchmarksql/ddl/postgresql_heap_single_node
+    benchmarksql_db: postgres
+    table_strategy: benchmarksql_postgresql_default
+    requires_ddl_confirmation: false
+

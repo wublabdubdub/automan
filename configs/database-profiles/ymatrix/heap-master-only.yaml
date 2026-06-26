@@ -1,0 +1,14 @@
+database_profile:
+  id: ymatrix_heap_master_only
+  display_name: YMatrix heap master only
+  database_type: ymatrix
+  storage_engine: heap
+  test_mode: master_only
+
+  tpcc:
+    ddl_profile: ymatrix_heap_master_only
+    ddl_dir: benchmarks/tpcc/benchmarksql/ddl/ymatrix_heap_master_only
+    benchmarksql_db: postgres
+    table_strategy: benchmarksql_postgresql_default
+    requires_ddl_confirmation: false
+

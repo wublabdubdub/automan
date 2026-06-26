@@ -1,0 +1,11 @@
+ddl_profile:
+  id: ymatrix_heap_master_only
+  benchmark: tpcc
+  database_type: ymatrix
+  storage_engine: heap
+  test_mode: master_only
+  status: approved
+  strategy: benchmarksql_postgresql_default
+  notes:
+    - Uses BenchmarkSQL default PostgreSQL SQL files without modification.
+

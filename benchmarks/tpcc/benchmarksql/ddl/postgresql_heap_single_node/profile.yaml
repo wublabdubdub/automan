@@ -1,0 +1,11 @@
+ddl_profile:
+  id: postgresql_heap_single_node
+  benchmark: tpcc
+  database_type: postgresql
+  storage_engine: heap
+  test_mode: single_node
+  status: approved
+  strategy: benchmarksql_postgresql_default
+  notes:
+    - Uses BenchmarkSQL default PostgreSQL SQL files without modification.
+

@@ -111,6 +111,9 @@ docs/config-template-design.md
 
 docs/runs-structure.md
   每次测试运行的 runs/ 结果目录结构，定义归档文件、指标、日志和报告上下文的位置。
+
+docs/tpcc-automan-flow.md
+  当前 TPC-C-only 阶段的 automan run / automan progress 完整交互与执行流程。
 ```
 
 ## 执行位置约束
@@ -120,7 +123,7 @@ docs/runs-structure.md
 实际测试必须上传到远端机器执行：
 
 ```text
-host: 72.16.100.143
+host: 172.16.100.143
 user: root
 remote_path: /root/automan
 ```

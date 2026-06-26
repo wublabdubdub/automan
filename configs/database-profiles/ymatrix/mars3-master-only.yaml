@@ -1,0 +1,20 @@
+database_profile:
+  id: ymatrix_mars3_master_only
+  display_name: YMatrix mars3 master only
+  database_type: ymatrix
+  storage_engine: mars3
+  test_mode: master_only
+
+  tpcc:
+    ddl_profile: ymatrix_mars3_master_only
+    ddl_dir: benchmarks/tpcc/benchmarksql/ddl/ymatrix_mars3_master_only
+    benchmarksql_db: postgres
+    table_strategy: mars3_master_only
+    requires_ddl_confirmation: true
+    mars3_defaults:
+      prefer_load_mode: single
+      rowstore_size: 64
+      compresstype: zstd
+      compresslevel: 1
+      compress_threshold: 1200
+

@@ -1,0 +1,30 @@
+database_type:
+  name: ymatrix
+  display_name: YMatrix
+  protocol: postgresql
+  driver: psycopg
+  default_port: 5432
+
+  storage_engines:
+    - name: heap
+      display_name: heap
+      default: true
+    - name: mars3
+      display_name: mars3
+      default: false
+
+  test_modes:
+    - name: master_only
+      display_name: master only
+      default: true
+
+  probe:
+    version_sql: "select version()"
+    port_sql: "show port"
+    settings_sql: "select name, setting, unit from pg_settings"
+
+  config_apply:
+    method: gpconfig
+    gpconfig_command: gpconfig
+    restart_command: "mxstop -afr"
+

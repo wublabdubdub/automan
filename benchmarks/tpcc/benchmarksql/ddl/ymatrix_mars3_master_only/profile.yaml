@@ -1,0 +1,18 @@
+ddl_profile:
+  id: ymatrix_mars3_master_only
+  benchmark: tpcc
+  database_type: ymatrix
+  storage_engine: mars3
+  test_mode: master_only
+  status: draft
+  strategy: mars3_master_only
+  mars3_defaults:
+    prefer_load_mode: single
+    rowstore_size: 64
+    compresstype: zstd
+    compresslevel: 1
+    compress_threshold: 1200
+  notes:
+    - tableCreates.sql uses USING MARS3 and DISTRIBUTED MASTERONLY for BenchmarkSQL TPC-C tables.
+    - Files not mentioned by the user remain aligned with BenchmarkSQL defaults.
+

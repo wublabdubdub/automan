@@ -1,0 +1,88 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True)
+class DatabaseProfile:
+    id: str
+    display_name: str
+    database_type: str
+    storage_engine: str
+    test_mode: str
+    ddl_profile: str
+    ddl_dir: str
+    requires_ddl_confirmation: bool
+    mars3_defaults: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ConnectionInfo:
+    ssh_host: str
+    ssh_port: int
+    ssh_user: str
+    ssh_password: str
+    remote_workdir: str
+    db_host: str
+    db_port: int
+    db_name: str
+    db_user: str
+    db_password: str
+    postgresql_conf: str | None = None
+    restart_command: str | None = None
+    gpconfig_command: str = "gpconfig"
+
+    def redacted(self) -> dict[str, Any]:
+        return {
+            "ssh_host": self.ssh_host,
+            "ssh_port": self.ssh_port,
+            "ssh_user": self.ssh_user,
+            "ssh_password": "***",
+            "remote_workdir": self.remote_workdir,
+            "db_host": self.db_host,
+            "db_port": self.db_port,
+            "db_name": self.db_name,
+            "db_user": self.db_user,
+            "db_password": "***",
+            "postgresql_conf": self.postgresql_conf,
+            "restart_command": self.restart_command,
+            "gpconfig_command": self.gpconfig_command,
+        }
+
+
+@dataclass
+class Target:
+    profile: DatabaseProfile
+    connection: ConnectionInfo
+    recommended_params: dict[str, str]
+    accepted_params: dict[str, str]
+    apply_params: bool
+    host_facts: dict[str, str | int]
+
+    @property
+    def id(self) -> str:
+        return self.profile.id
+
+
+@dataclass(frozen=True)
+class TpccMatrix:
+    warehouses: list[int]
+    terminals: list[int]
+    load_workers: int
+    run_mins: int
+
+
+@dataclass(frozen=True)
+class RunSpec:
+    run_id: str
+    target_id: str
+    warehouse: int
+    terminals: int
+    load_workers: int
+    run_mins: int
+    ddl_profile: str
+    ddl_dir: str
+    properties_path: Path
+
