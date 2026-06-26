@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import socket
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -16,25 +18,39 @@ from automan_core.ssh import CommandResult
 def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: list[RunSpec]) -> None:
     campaign_dir = root / "runs" / "campaigns" / campaign_id
     _set_campaign_status(campaign_dir, "running")
+    execution_host_check = _preflight_execution_host(targets)
+    if execution_host_check.exit_code != 0:
+        _append_timeline(campaign_dir, {"event": "preflight_failed", "results": [_result_dict(execution_host_check)]})
+        _set_campaign_status(campaign_dir, "failed")
+        return
     preflight = _preflight_benchmarksql(root)
     if preflight.exit_code != 0:
         _append_timeline(campaign_dir, {"event": "preflight_failed", "results": [_result_dict(preflight)]})
         _set_campaign_status(campaign_dir, "failed")
         return
 
-    applied_config_keys: set[tuple[str, int, str, str]] = set()
+    applied_config_params: dict[tuple[str, ...], dict[str, str]] = {}
     for target in targets:
         if target.apply_params:
-            config_key = (
-                target.connection.ssh_host,
-                target.connection.ssh_port,
-                target.profile.database_type,
-                target.connection.db_name,
-            )
-            if config_key in applied_config_keys:
+            config_key = _config_key(target)
+            previous_params = applied_config_params.get(config_key)
+            if previous_params is not None:
+                if previous_params != target.accepted_params:
+                    _append_timeline(
+                        campaign_dir,
+                        {
+                            "event": "database_config_conflict",
+                            "target": target.id,
+                            "config_key": list(config_key),
+                            "previous_params": previous_params,
+                            "current_params": target.accepted_params,
+                        },
+                    )
+                    _set_campaign_status(campaign_dir, "failed")
+                    return
                 _append_timeline(campaign_dir, {"event": "database_config_reused", "target": target.id, "config_key": list(config_key)})
                 continue
-            applied_config_keys.add(config_key)
+            applied_config_params[config_key] = dict(target.accepted_params)
             results = apply_database_params(target.profile, target.connection, target.accepted_params)
             _append_timeline(campaign_dir, {"event": "database_config_applied", "target": target.id, "results": [_result_dict(r) for r in results]})
             if any(result.exit_code != 0 for result in results):
@@ -85,10 +101,21 @@ def _execute_run(root: Path, campaign_id: str, target: Target, run: RunSpec) -> 
         ("runDatabaseBuild.sh", ["./runDatabaseBuild.sh", str(run.properties_path)]),
         ("runBenchmark.sh", ["./runBenchmark.sh", str(run.properties_path)]),
     ]
-    if not run.skip_destroy:
+    should_destroy = not run.skip_destroy
+    if run.skip_destroy:
+        probe = _probe_tpcc_objects(target)
+        _write_command_result(run_dir, "schema_probe", probe)
+        _append_timeline(campaign_dir, {"event": "schema_probe", "run_id": run.run_id, "target": run.target_id, "exit_code": probe.exit_code, "stdout": probe.stdout, "stderr": probe.stderr})
+        if probe.exit_code != 0:
+            _set_run_status(run_dir, "failed", "schema_probe")
+            _mark_run_finished(campaign_dir, run.target_id, failed=True)
+            return
+        should_destroy = _tpcc_objects_exist(probe)
+
+    if should_destroy:
         commands.insert(0, ("runDatabaseDestroy.sh", ["./runDatabaseDestroy.sh", str(run.properties_path)]))
     else:
-        _append_timeline(campaign_dir, {"event": "phase_skipped", "run_id": run.run_id, "target": run.target_id, "phase": "runDatabaseDestroy.sh", "reason": "first_run_per_target"})
+        _append_timeline(campaign_dir, {"event": "phase_skipped", "run_id": run.run_id, "target": run.target_id, "phase": "runDatabaseDestroy.sh", "reason": "first_run_empty_schema"})
     for phase, command in commands:
         _set_run_status(run_dir, "running", phase)
         _update_progress(campaign_dir, run.target_id, "running", run.run_id, phase)
@@ -118,7 +145,7 @@ def _prepare_benchmark_run_dir(root: Path, target: Target, run: RunSpec) -> None
 def _preflight_benchmarksql(root: Path) -> CommandResult:
     tool_dir = root / "tools" / "benchmarksql"
     dist_dir = tool_dir / "dist"
-    if not dist_dir.exists() or not any(dist_dir.iterdir()):
+    if not dist_dir.exists() or not any(dist_dir.glob("BenchmarkSQL-*.jar")):
         return CommandResult(
             command="preflight benchmarksql dist",
             exit_code=1,
@@ -129,11 +156,98 @@ def _preflight_benchmarksql(root: Path) -> CommandResult:
                 "from the source workspace, then sync the project to the execution host."
             ),
         )
+    for script in ("runDatabaseDestroy.sh", "runDatabaseBuild.sh", "runBenchmark.sh"):
+        script_path = tool_dir / "run" / script
+        if not script_path.exists():
+            return CommandResult(command=f"preflight {script}", exit_code=1, stdout="", stderr=f"missing script: {script_path}")
+        if not os.access(script_path, os.X_OK):
+            return CommandResult(command=f"preflight {script}", exit_code=1, stdout="", stderr=f"script is not executable: {script_path}")
+    java = _run_local(["java", "-version"], cwd=root, timeout=30)
+    if java.exit_code != 0:
+        return CommandResult(command="preflight java -version", exit_code=java.exit_code, stdout=java.stdout, stderr=java.stderr)
+    psql = _run_local(["psql", "--version"], cwd=root, timeout=30)
+    if psql.exit_code != 0:
+        return CommandResult(command="preflight psql --version", exit_code=psql.exit_code, stdout=psql.stdout, stderr=psql.stderr)
     return CommandResult(command="preflight benchmarksql dist", exit_code=0, stdout=str(dist_dir), stderr="")
 
 
 def _scheduling_host(target: Target) -> str:
     return target.connection.db_host or target.connection.ssh_host
+
+
+def _config_key(target: Target) -> tuple[str, ...]:
+    return (
+        target.connection.ssh_host,
+        str(target.connection.ssh_port),
+        target.profile.database_type,
+        target.connection.postgresql_conf or "",
+        target.connection.gpconfig_command or "",
+        target.connection.restart_command or "",
+    )
+
+
+def _preflight_execution_host(targets: list[Target]) -> CommandResult:
+    expected = {target.connection.execution_host for target in targets if target.connection.execution_host}
+    if not expected:
+        return CommandResult(command="preflight execution host", exit_code=0, stdout="", stderr="")
+    local_names = _local_host_markers()
+    missing = sorted(host for host in expected if host not in local_names and host not in {"localhost", "127.0.0.1"})
+    if missing:
+        return CommandResult(
+            command="preflight execution host",
+            exit_code=1,
+            stdout=f"local={sorted(local_names)}",
+            stderr=f"current process is not running on configured execution host(s): {', '.join(missing)}",
+        )
+    return CommandResult(command="preflight execution host", exit_code=0, stdout=f"local={sorted(local_names)}", stderr="")
+
+
+def _local_host_markers() -> set[str]:
+    markers = {"localhost", "127.0.0.1", socket.gethostname()}
+    try:
+        markers.add(socket.getfqdn())
+        markers.add(socket.gethostbyname(socket.gethostname()))
+    except socket.error:
+        pass
+    try:
+        result = subprocess.run(["hostname", "-I"], text=True, capture_output=True, timeout=5, check=False)
+        if result.returncode == 0:
+            markers.update(part.strip() for part in result.stdout.split() if part.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return {marker for marker in markers if marker}
+
+
+def _probe_tpcc_objects(target: Target) -> CommandResult:
+    query = (
+        "select count(*) "
+        "from pg_catalog.pg_class c "
+        "join pg_catalog.pg_namespace n on n.oid = c.relnamespace "
+        "where n.nspname = current_schema() "
+        "and c.relname like 'bmsql_%';"
+    )
+    command = [
+        "psql",
+        "-h",
+        target.connection.db_host,
+        "-p",
+        str(target.connection.db_port),
+        "-U",
+        target.connection.db_user,
+        "-d",
+        target.connection.db_name,
+        "-tAc",
+        query,
+    ]
+    return _run_local(command, cwd=Path.cwd(), timeout=60, env={"PGPASSWORD": target.connection.db_password})
+
+
+def _tpcc_objects_exist(result: CommandResult) -> bool:
+    for line in reversed(result.stdout.splitlines()):
+        stripped = line.strip()
+        if stripped:
+            return int(stripped) > 0
+    return False
 
 
 def _install_ddl_profile(root: Path, target: Target, run: RunSpec) -> None:
@@ -172,7 +286,10 @@ def _render_mars3_table_creates(benchmark_run_dir: Path, options: dict) -> None:
     table_creates.write_text(text.replace(default_block, rendered_block), encoding="utf-8")
 
 
-def _run_local(command: list[str], cwd: Path, timeout: int) -> CommandResult:
+def _run_local(command: list[str], cwd: Path, timeout: int, env: dict[str, str] | None = None) -> CommandResult:
+    run_env = os.environ.copy()
+    if env:
+        run_env.update(env)
     try:
         completed = subprocess.run(
             command,
@@ -181,6 +298,7 @@ def _run_local(command: list[str], cwd: Path, timeout: int) -> CommandResult:
             capture_output=True,
             timeout=timeout,
             check=False,
+            env=run_env,
         )
         return CommandResult(
             command=" ".join(command),

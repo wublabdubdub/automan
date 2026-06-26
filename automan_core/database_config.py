@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import re
 
 from automan_core.models import ConnectionInfo, DatabaseProfile
 from automan_core.ssh import SSHClient, CommandResult
@@ -120,4 +121,61 @@ def _last_nonempty_line(text: str) -> str:
 
 def _normalize_param_value(value: str) -> str:
     normalized = value.strip().strip("'\"").lower()
-    return "".join(normalized.split())
+    normalized = "".join(normalized.split())
+    if normalized in {"on", "true", "1"}:
+        return "bool:true"
+    if normalized in {"off", "false", "0"}:
+        return "bool:false"
+    memory = _normalize_memory_value(normalized)
+    if memory is not None:
+        return f"memory:{memory}"
+    duration = _normalize_duration_value(normalized)
+    if duration is not None:
+        return f"duration_ms:{duration}"
+    return normalized
+
+
+def _normalize_memory_value(value: str) -> int | None:
+    match = re.fullmatch(r"(\d+)(b|kb|k|mb|m|gb|g|tb|t)", value)
+    if not match:
+        return None
+    amount = int(match.group(1))
+    unit = match.group(2)
+    multipliers = {
+        "b": 1,
+        "k": 1024,
+        "kb": 1024,
+        "m": 1024**2,
+        "mb": 1024**2,
+        "g": 1024**3,
+        "gb": 1024**3,
+        "t": 1024**4,
+        "tb": 1024**4,
+    }
+    return amount * multipliers[unit]
+
+
+def _normalize_duration_value(value: str) -> int | None:
+    match = re.fullmatch(r"(\d+)(ms|s|sec|second|seconds|min|minute|minutes|h|hr|hour|hours|d|day|days)", value)
+    if not match:
+        return None
+    amount = int(match.group(1))
+    unit = match.group(2)
+    multipliers = {
+        "ms": 1,
+        "s": 1000,
+        "sec": 1000,
+        "second": 1000,
+        "seconds": 1000,
+        "min": 60 * 1000,
+        "minute": 60 * 1000,
+        "minutes": 60 * 1000,
+        "h": 60 * 60 * 1000,
+        "hr": 60 * 60 * 1000,
+        "hour": 60 * 60 * 1000,
+        "hours": 60 * 60 * 1000,
+        "d": 24 * 60 * 60 * 1000,
+        "day": 24 * 60 * 60 * 1000,
+        "days": 24 * 60 * 60 * 1000,
+    }
+    return amount * multipliers[unit]

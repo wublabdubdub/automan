@@ -87,6 +87,10 @@ class ProfileAndPlanTest(unittest.TestCase):
             self.assertIn("db_password: '***'", plan)
             self.assertIn("destroy_policy: first_run_per_target_skips_destroy", plan)
             self.assertIn("skip_destroy: true", plan)
+            progress = (campaign_dir / "progress.json").read_text(encoding="utf-8")
+            self.assertIn('"execution_host": "172.16.100.143"', progress)
+            self.assertIn('"config_host": "127.0.0.1"', progress)
+            self.assertIn('"database_host": "127.0.0.1"', progress)
             properties = runs[0].properties_path.read_text(encoding="utf-8")
             self.assertIn("password=db-secret", properties)
 

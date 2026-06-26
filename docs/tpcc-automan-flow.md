@@ -25,6 +25,7 @@ The execution host must provide:
 Python 3.8
 JDK
 Ant
+psql
 Python packages from requirements.txt
 ```
 
@@ -110,7 +111,7 @@ mxstop -afr
 
 ## Host Probe And Parameter Application
 
-After configuration SSH input, `automan` probes CPU and memory on the database configuration host.
+After configuration SSH input, `automan` probes CPU and memory on the database configuration host. `automan run` must be started on the configured execution host; the runner checks the local host markers before doing destructive work.
 
 It recommends database parameters. After user confirmation:
 
@@ -130,6 +131,10 @@ YMatrix:
 ```
 
 The user can also choose not to apply parameters.
+
+If multiple selected targets point to the same configuration host and database parameter control path, `automan` applies parameters only once when the accepted parameter sets are identical. If the accepted parameter sets differ, the campaign fails before benchmark execution so the user must choose one canonical parameter set.
+
+After restart, `automan` verifies parameter values by comparing the `show <parameter>` result with the accepted value. Common boolean, memory, and duration units are normalized before comparison.
 
 ## TPC-C Matrix
 
@@ -206,14 +211,16 @@ The first run for each target is marked with:
 skip_destroy: true
 ```
 
-It executes:
+Before executing it, `automan` probes the target database for existing `bmsql_*` objects with `psql`.
+
+If no TPC-C objects exist, it executes:
 
 ```bash
 runDatabaseBuild.sh
 runBenchmark.sh
 ```
 
-Later runs for the same target execute the full BenchmarkSQL sequence:
+If TPC-C objects already exist, or for later runs of the same target, it executes the full BenchmarkSQL sequence:
 
 ```bash
 runDatabaseDestroy.sh
@@ -221,7 +228,9 @@ runDatabaseBuild.sh
 runBenchmark.sh
 ```
 
-Skipping build is never allowed. Destroy is skipped only for the first run per target to avoid failing against an empty database.
+Skipping build is never allowed. Destroy is skipped only when the first-run schema probe confirms there are no existing TPC-C objects.
+
+All maintained TPC-C `tableDrops.sql` profiles use `drop ... if exists`, so destroy is idempotent against partially cleaned schemas.
 
 Each run gets an isolated BenchmarkSQL working copy:
 

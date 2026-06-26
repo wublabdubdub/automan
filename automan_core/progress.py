@@ -39,14 +39,13 @@ def _print_progress(progress: dict) -> None:
         f"{progress.get('failed_runs', 0)} failed"
     )
     print()
-    print(f"{'TARGET':32} {'HOST':18} {'CURRENT RUN':38} {'PHASE':24} {'DONE'}")
+    print(f"{'TARGET':32} {'DB HOST':18} {'CURRENT RUN':38} {'PHASE':24} {'DONE'}")
     for target in progress.get("targets", []):
         done = f"{target.get('finished_runs', 0)}/{target.get('total_runs', 0)}"
         print(
             f"{target.get('target_id', '-'):32} "
-            f"{target.get('host', '-'):18} "
+            f"{target.get('database_host') or target.get('host') or '-':18} "
             f"{str(target.get('current_run') or '-'):38} "
             f"{str(target.get('current_phase') or target.get('status') or '-'):24} "
             f"{done}"
         )
-

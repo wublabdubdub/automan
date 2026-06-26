@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from automan_core.database_config import _verify_params
+from automan_core.database_config import _normalize_param_value, _verify_params
 from automan_core.models import ConnectionInfo
 from automan_core.ssh import CommandResult
 
@@ -59,6 +59,11 @@ class DatabaseConfigTest(unittest.TestCase):
         self.assertEqual(results[0].exit_code, 2)
         self.assertIn("expected=128", results[0].stdout)
         self.assertIn("actual=64", results[0].stdout)
+
+    def test_normalize_param_value_handles_common_database_units(self) -> None:
+        self.assertEqual(_normalize_param_value("8192MB"), _normalize_param_value("8GB"))
+        self.assertEqual(_normalize_param_value("120s"), _normalize_param_value("2min"))
+        self.assertEqual(_normalize_param_value("on"), _normalize_param_value("true"))
 
 
 if __name__ == "__main__":

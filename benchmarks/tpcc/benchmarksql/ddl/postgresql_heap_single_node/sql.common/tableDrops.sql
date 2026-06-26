@@ -1,22 +1,22 @@
-drop table bmsql_config;
+drop table if exists bmsql_config;
 
-drop table bmsql_new_order;
+drop table if exists bmsql_new_order;
 
-drop table bmsql_order_line;
+drop table if exists bmsql_order_line;
 
-drop table bmsql_oorder;
+drop table if exists bmsql_oorder;
 
-drop table bmsql_history;
+drop table if exists bmsql_history;
 
-drop table bmsql_customer;
+drop table if exists bmsql_customer;
 
-drop table bmsql_stock;
+drop table if exists bmsql_stock;
 
-drop table bmsql_item;
+drop table if exists bmsql_item;
 
-drop table bmsql_district;
+drop table if exists bmsql_district;
 
-drop table bmsql_warehouse;
+drop table if exists bmsql_warehouse;
 
-drop sequence bmsql_hist_id_seq;
+drop sequence if exists bmsql_hist_id_seq;
 

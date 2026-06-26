@@ -101,6 +101,14 @@ JDK 8
 Ant
 ```
 
+TPC-C 执行机还需要：
+
+```text
+Python 3.8
+psql
+requirements.txt 中的 Python 依赖
+```
+
 本地 Windows 源目录不直接构建 BenchmarkSQL。构建流程固定为：
 
 ```bash
@@ -117,4 +125,4 @@ tools/benchmarksql/run/runDatabaseBuild.sh
 tools/benchmarksql/run/runBenchmark.sh
 ```
 
-框架实现时必须对每个 target 的后续 TPC-C run 执行完整三段流程，不允许直接跳过 build 后单独运行 benchmark。每个 target 的第一条 run 会带有 `skip_destroy=true` 标记，只执行 build 和 benchmark，避免空库首次执行 `runDatabaseDestroy.sh` 失败。
+框架实现时必须对每个 target 的后续 TPC-C run 执行完整三段流程，不允许直接跳过 build 后单独运行 benchmark。每个 target 的第一条 run 会带有 `skip_destroy=true` 标记，但执行前会探测数据库中是否已有 `bmsql_*` 对象：没有对象才跳过 destroy；已有对象则先 destroy 再 build。项目维护的 TPC-C drop SQL 必须使用 `drop ... if exists`，避免半清理状态导致 destroy 失败。

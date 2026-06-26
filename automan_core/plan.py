@@ -143,7 +143,9 @@ def write_campaign_files(
         "targets": [
             {
                 "target_id": target.id,
-                "host": target.connection.ssh_host,
+                "execution_host": target.connection.execution_host,
+                "config_host": target.connection.ssh_host,
+                "database_host": target.connection.db_host,
                 "status": "pending",
                 "current_run": None,
                 "current_phase": None,
