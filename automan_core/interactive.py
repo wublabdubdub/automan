@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from getpass import getpass
 from pathlib import Path
 from typing import Any
-from getpass import getpass
 
 from automan_core.executor import execute_campaign
 from automan_core.models import ConnectionInfo, Target, TpccMatrix
@@ -18,12 +18,16 @@ def run_interactive_campaign(root: Path, plan_only: bool) -> None:
     database_types = load_database_types(root)
     profiles = load_database_profiles(root)
 
-    selected_types = _choose_many("请选择数据库类型，可多选", [(k, v["display_name"]) for k, v in database_types.items()])
+    selected_types = _choose_many(
+        "请选择数据库类型，可多选",
+        [(key, value["display_name"]) for key, value in database_types.items()],
+    )
     selected_profiles = []
     for db_type in selected_types:
         type_config = database_types[db_type]
         storage_engines = [item["name"] for item in type_config["storage_engines"]]
         test_modes = [item["name"] for item in type_config["test_modes"]]
+
         if len(storage_engines) == 1:
             chosen_engines = storage_engines
             print(f"{type_config['display_name']} 存储引擎默认: {storage_engines[0]}")
@@ -72,9 +76,12 @@ def run_interactive_campaign(root: Path, plan_only: bool) -> None:
             )
         )
 
-    load_workers_default = max(recommended_load_workers(t.host_facts) for t in target_connections) if target_connections else 8
+    load_workers_default = max(recommended_load_workers(target.host_facts) for target in target_connections) if target_connections else 8
     matrix = _prompt_matrix(load_workers_default, matrix_seed)
     mars3_options = _prompt_mars3_options(selected_profiles)
+    for target in target_connections:
+        if target.profile.storage_engine == "mars3":
+            target.mars3_options = mars3_options
     _confirm_ddl(selected_profiles, mars3_options)
 
     campaign_id = new_campaign_id()
@@ -310,3 +317,4 @@ def _yes_no(prompt: str, default: bool) -> bool:
     if not value:
         return default
     return value in {"y", "yes"}
+

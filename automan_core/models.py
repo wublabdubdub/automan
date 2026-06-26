@@ -60,6 +60,7 @@ class Target:
     accepted_params: dict[str, str]
     apply_params: bool
     host_facts: dict[str, str | int]
+    mars3_options: dict[str, Any] = field(default_factory=dict)
 
     @property
     def id(self) -> str:
@@ -85,4 +86,5 @@ class RunSpec:
     ddl_profile: str
     ddl_dir: str
     properties_path: Path
-
+    work_dir: Path
+    benchmark_run_dir: Path

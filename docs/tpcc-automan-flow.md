@@ -188,6 +188,20 @@ runBenchmark.sh
 
 Skipping destroy/build is not allowed.
 
+Each run gets an isolated BenchmarkSQL working copy:
+
+```text
+work/tpcc/benchmarksql/<run_id>/benchmarksql/
+```
+
+The selected DDL profile is installed into that per-run copy. This prevents PostgreSQL heap, YMatrix heap, and YMatrix mars3 runs from overwriting each other's `sql.common` or `sql.postgres` directories.
+
+The generated properties file lives at:
+
+```text
+work/tpcc/benchmarksql/<run_id>/tpcc.properties
+```
+
 ## Scheduling
 
 Targets on different hosts run in parallel.
@@ -221,4 +235,3 @@ runs/campaigns/<campaign_id>/progress.json
 ```
 
 It does not participate in execution.
-

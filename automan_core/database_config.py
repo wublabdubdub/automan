@@ -44,7 +44,10 @@ path.write_text(text)
 PY
 {connection.restart_command}
 """
-    return [ssh.run(script, timeout=300)]
+    results = [ssh.run(script, timeout=300)]
+    if results[-1].exit_code == 0:
+        results.extend(_verify_params(ssh, connection, params))
+    return results
 
 
 def _apply_ymatrix(ssh: SSHClient, connection: ConnectionInfo, params: dict[str, str]) -> list[CommandResult]:
@@ -56,5 +59,46 @@ def _apply_ymatrix(ssh: SSHClient, connection: ConnectionInfo, params: dict[str,
             return results
     restart = connection.restart_command or "mxstop -afr"
     results.append(ssh.run(restart, timeout=900))
+    if results[-1].exit_code == 0:
+        results.extend(_verify_params(ssh, connection, params))
     return results
 
+
+def _verify_params(ssh: SSHClient, connection: ConnectionInfo, params: dict[str, str]) -> list[CommandResult]:
+    results: list[CommandResult] = []
+    for key in params:
+        sql = f"show {key};"
+        psql = (
+            f"PGPASSWORD={shlex.quote(connection.db_password)} psql "
+            f"-h {shlex.quote(connection.db_host)} "
+            f"-p {shlex.quote(str(connection.db_port))} "
+            f"-U {shlex.quote(connection.db_user)} "
+            f"-d {shlex.quote(connection.db_name)} "
+            f"-tAc {shlex.quote(sql)}"
+        )
+        command = (
+            "for i in $(seq 1 30); do "
+            f"{psql} && exit 0; "
+            "sleep 5; "
+            "done; "
+            "exit 1"
+        )
+        result = ssh.run(command, timeout=180)
+        redacted_psql = psql.replace(f"PGPASSWORD={shlex.quote(connection.db_password)}", "PGPASSWORD=***")
+        redacted_command = (
+            "for i in $(seq 1 30); do "
+            f"{redacted_psql} && exit 0; "
+            "sleep 5; "
+            "done; "
+            "exit 1"
+        )
+        result = CommandResult(
+            command=redacted_command,
+            exit_code=result.exit_code,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+        results.append(result)
+        if result.exit_code != 0:
+            return results
+    return results

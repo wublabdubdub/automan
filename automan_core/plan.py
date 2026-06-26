@@ -19,7 +19,8 @@ def build_run_specs(root: Path, campaign_id: str, targets: list[Target], matrix:
         for warehouse in matrix.warehouses:
             for terminals in matrix.terminals:
                 run_id = f"{campaign_id}-{target.id}-w{warehouse}-c{terminals}"
-                properties_path = root / "work" / "tpcc" / "benchmarksql" / run_id / "tpcc.properties"
+                work_dir = root / "work" / "tpcc" / "benchmarksql" / run_id
+                properties_path = work_dir / "tpcc.properties"
                 specs.append(
                     RunSpec(
                         run_id=run_id,
@@ -31,6 +32,8 @@ def build_run_specs(root: Path, campaign_id: str, targets: list[Target], matrix:
                         ddl_profile=target.profile.ddl_profile,
                         ddl_dir=target.profile.ddl_dir,
                         properties_path=properties_path,
+                        work_dir=work_dir,
+                        benchmark_run_dir=work_dir / "benchmarksql" / "run",
                     )
                 )
     return specs
@@ -81,6 +84,7 @@ def write_campaign_files(
                 "recommended_params": target.recommended_params,
                 "accepted_params": target.accepted_params,
                 "apply_params": target.apply_params,
+                "mars3_options": target.mars3_options,
                 "ddl_profile": target.profile.ddl_profile,
                 "ddl_dir": target.profile.ddl_dir,
             }
@@ -104,6 +108,8 @@ def write_campaign_files(
                 "ddl_profile": run.ddl_profile,
                 "ddl_dir": run.ddl_dir,
                 "properties_path": str(run.properties_path),
+                "work_dir": str(run.work_dir),
+                "benchmark_run_dir": str(run.benchmark_run_dir),
             }
             for run in runs
         ],
@@ -125,6 +131,7 @@ def write_campaign_files(
         "status": "planned",
         "total_runs": len(runs),
         "finished_runs": 0,
+        "success_runs": 0,
         "running_runs": 0,
         "failed_runs": 0,
         "pending_runs": len(runs),
@@ -162,6 +169,8 @@ def write_campaign_files(
                 "ddl_profile": run.ddl_profile,
                 "ddl_dir": run.ddl_dir,
                 "benchmarksql_properties": str(run.properties_path),
+                "work_dir": str(run.work_dir),
+                "benchmark_run_dir": str(run.benchmark_run_dir),
                 "command_sequence": [
                     "runDatabaseDestroy.sh",
                     "runDatabaseBuild.sh",
