@@ -38,6 +38,25 @@ class InventoryConfigTest(unittest.TestCase):
         messages = validate_task_definition(task)
         self.assertTrue(any(message.level == "OK" and "1 benchmark target" in message.text for message in messages))
 
+    def test_ymatrix_inventory_auto_fills_tpcc_memory_parameters(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        task = load_task_definition(repo, repo / "conf" / "tpcc" / "ymatrix-mars3.yml")
+
+        target = task.targets[0]
+        commands = "\n".join(target.manual_parameter_commands)
+
+        self.assertEqual(target.profile.id, "ymatrix_mars3_master_only")
+        self.assertEqual(target.accepted_params["max_connections"], "1050")
+        self.assertIn("gpconfig -c max_connections -v 1050", commands)
+        self.assertIn("gpconfig -c shared_buffers -v 64GB", commands)
+        self.assertIn("gpconfig -c effective_cache_size -v 128GB", commands)
+        self.assertIn("gpconfig -c work_mem -v 4MB", commands)
+        self.assertIn("gpconfig -c maintenance_work_mem -v 2GB", commands)
+        self.assertIn("gpconfig -c checkpoint_completion_target -v 0.9", commands)
+        self.assertIn("gpconfig -c max_wal_size -v 64GB", commands)
+        self.assertIn("gpconfig -c min_wal_size -v 8GB", commands)
+        self.assertIn("gpconfig -c vacuum_cost_limit -v 10000", commands)
+
     def test_inventory_plan_only_generates_manual_parameter_script(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as tmp:

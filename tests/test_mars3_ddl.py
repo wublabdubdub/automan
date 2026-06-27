@@ -10,6 +10,7 @@ class Mars3DDLTest(unittest.TestCase):
         ddl = root / "benchmarks/tpcc/benchmarksql/ddl/ymatrix_mars3_master_only/sql.common/tableCreates.sql"
         text = ddl.read_text(encoding="utf-8")
 
+        self.assertLess(text.lower().find("create extension if not exists matrixts"), text.lower().find("create table"))
         self.assertEqual(text.count("USING MARS3"), 10)
         self.assertEqual(text.count("DISTRIBUTED MASTERONLY"), 10)
         self.assertIn("mars3options='prefer_load_mode=single,rowstore_size=64'", text)

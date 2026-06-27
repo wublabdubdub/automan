@@ -313,6 +313,22 @@ database_parameters:
   max_connections: "550"
 ```
 
+YMatrix master only 的 TPC-C 模板会基于 `host_facts.cpu_threads` 和 `host_facts.memory_gb`
+自动补齐缺失的内存/WAL 参数，并仍然只生成手工执行脚本。自动补齐的参数包括：
+
+```text
+shared_buffers
+effective_cache_size
+work_mem
+maintenance_work_mem
+checkpoint_completion_target
+max_wal_size
+min_wal_size
+vacuum_cost_limit
+```
+
+如果 `database_parameters` 中显式声明了某个参数，显式值优先；未声明的参数使用自动推荐值。
+
 用户需要登录 YMatrix 管理节点，以具备权限的 OS 用户身份手工执行。
 
 ## 7. 校验

@@ -17,6 +17,7 @@ from automan_core.models import (
 from automan_core.parameter_commands import build_manual_parameter_commands
 from automan_core.plan import build_run_specs, new_campaign_id, write_campaign_files
 from automan_core.profiles import find_profile, load_database_profiles
+from automan_core.sizing import recommend_params
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,10 @@ class TaskDefinition:
 class ValidationMessage:
     level: str
     text: str
+
+
+class CampaignFailedError(RuntimeError):
+    pass
 
 
 def load_task_definition(root: Path, task_path: Path) -> TaskDefinition:
@@ -137,6 +142,7 @@ def run_task_campaign(root: Path, task_path: Path, plan_only: bool) -> Path:
 
     if not plan_only:
         execute_campaign(root, campaign_id, task.targets, runs, task.collectors)
+        _raise_if_campaign_failed(campaign_dir)
         print("[ OK ] campaign finished")
         print("[HINT] run ./automan progress to inspect status")
     return campaign_dir
@@ -147,7 +153,7 @@ def _load_legacy_task(root: Path, task_path: Path, raw: dict[str, Any], profiles
         raise ValueError("only benchmark: tpcc is supported in this phase")
     execution = raw.get("execution", {})
     matrix = _load_matrix(raw.get("matrix", {}))
-    targets = [_load_legacy_target(item, profiles, execution) for item in raw.get("targets", [])]
+    targets = [_load_legacy_target(item, profiles, execution, matrix) for item in raw.get("targets", [])]
     return TaskDefinition(
         benchmark="tpcc",
         matrix=matrix,
@@ -182,7 +188,7 @@ def _load_inventory_task(root: Path, task_path: Path, raw: dict[str, Any], profi
             matrix = candidate
         elif matrix != candidate:
             raise ValueError("all inventory benchmark targets must use the same tpcc_* matrix in this phase")
-        targets.append(_load_inventory_target(group_name, group, group_vars, profiles, execution))
+        targets.append(_load_inventory_target(group_name, group, group_vars, profiles, execution, candidate))
 
     if matrix is None:
         matrix = _load_inventory_matrix(all_vars)
@@ -227,11 +233,17 @@ def _load_inventory_matrix(vars_: dict[str, Any]) -> TpccMatrix:
     )
 
 
-def _load_legacy_target(raw: dict[str, Any], profiles: dict, execution: dict[str, Any]) -> Target:
+def _load_legacy_target(raw: dict[str, Any], profiles: dict, execution: dict[str, Any], matrix: TpccMatrix) -> Target:
     profile_id = raw["profile"]
     profile = profiles[profile_id]
     connection = _load_connection(raw.get("connection", {}), execution)
-    params = {str(key): str(value) for key, value in raw.get("database_parameters", {}).items()}
+    host_facts = dict(raw.get("host_facts", {}))
+    params = _effective_database_parameters(
+        profile,
+        {str(key): str(value) for key, value in raw.get("database_parameters", {}).items()},
+        host_facts,
+        max(matrix.terminals),
+    )
     manual_commands = list(raw.get("manual_parameter_commands") or build_manual_parameter_commands(profile, connection, params))
     return Target(
         profile=profile,
@@ -239,7 +251,7 @@ def _load_legacy_target(raw: dict[str, Any], profiles: dict, execution: dict[str
         recommended_params=params,
         accepted_params=params,
         apply_params=False,
-        host_facts=dict(raw.get("host_facts", {})),
+        host_facts=host_facts,
         mars3_options=dict(raw.get("mars3_options", {})),
         manual_parameter_commands=manual_commands,
         target_id=str(raw.get("id") or profile.id),
@@ -252,12 +264,19 @@ def _load_inventory_target(
     vars_: dict[str, Any],
     profiles: dict,
     execution: dict[str, Any],
+    matrix: TpccMatrix,
 ) -> Target:
     host_name, host_vars = _first_host(group)
     merged = {**host_vars, **vars_}
     profile = _inventory_profile(merged, profiles)
     connection = _load_inventory_connection(host_name, merged, execution)
-    params = {str(key): str(value) for key, value in dict(merged.get("database_parameters", {}) or {}).items()}
+    host_facts = _host_facts(merged)
+    params = _effective_database_parameters(
+        profile,
+        {str(key): str(value) for key, value in dict(merged.get("database_parameters", {}) or {}).items()},
+        host_facts,
+        max(matrix.terminals),
+    )
     manual_commands = list(merged.get("manual_parameter_commands") or build_manual_parameter_commands(profile, connection, params))
     mars3_options = dict(profile.mars3_defaults if profile.storage_engine == "mars3" else {})
     mars3_options.update(dict(merged.get("mars3_options", {}) or {}))
@@ -267,7 +286,7 @@ def _load_inventory_target(
         recommended_params=params,
         accepted_params=params,
         apply_params=False,
-        host_facts=_host_facts(merged),
+        host_facts=host_facts,
         mars3_options=mars3_options,
         manual_parameter_commands=manual_commands,
         target_id=str(merged.get("target_id") or group_name),
@@ -346,6 +365,19 @@ def _inventory_profile(vars_: dict[str, Any], profiles: dict) -> Any:
     )
 
 
+def _effective_database_parameters(
+    profile: Any,
+    explicit_params: dict[str, str],
+    host_facts: dict[str, str | int],
+    max_terminals: int,
+) -> dict[str, str]:
+    if profile.database_type != "ymatrix":
+        return explicit_params
+    params = recommend_params(profile, host_facts, max_terminals)
+    params.update(explicit_params)
+    return params
+
+
 def _merged_mars3_options(targets: list[Target]) -> dict[str, Any]:
     for target in targets:
         if target.mars3_options:
@@ -369,6 +401,17 @@ def _print_task_plan(campaign_dir: Path, targets: list[Target], matrix: TpccMatr
     )
     print(f"[ OK ] total runs: {len(runs)}")
     print(f"[HINT] manual parameter commands: {campaign_dir / 'manual-parameter-commands.sh'}")
+
+
+def _raise_if_campaign_failed(campaign_dir: Path) -> None:
+    status = load_yaml(campaign_dir / "status.json")
+    if status.get("status") != "failed":
+        return
+    progress = load_yaml(campaign_dir / "progress.json")
+    last_error = progress.get("last_error") or status.get("last_error") or "unknown campaign failure"
+    print(f"[FAIL] campaign failed: {last_error}")
+    print(f"[HINT] inspect progress: ./automan progress --campaign {campaign_dir.name}")
+    raise CampaignFailedError(str(last_error))
 
 
 def _mapping(value: Any, name: str) -> dict[str, Any]:

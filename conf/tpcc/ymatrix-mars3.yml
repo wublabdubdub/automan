@@ -61,6 +61,9 @@ all:
           cpu_threads: 64
           memory_gb: 251
 
+        # Explicit values here override generated recommendations. Missing
+        # YMatrix TPC-C memory/WAL parameters are auto-filled from host_facts
+        # and rendered as manual gpconfig commands.
         database_parameters:
           max_connections: "1050"
 

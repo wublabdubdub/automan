@@ -8,7 +8,7 @@ from automan_core.checks import check_task_readiness
 from automan_core.cleanup import cleanup_tpcc
 from automan_core.progress import show_progress
 from automan_core.report import generate_report, latest_campaign_id
-from automan_core.task_runner import load_task_definition, run_task_campaign, validate_task_definition
+from automan_core.task_runner import CampaignFailedError, load_task_definition, run_task_campaign, validate_task_definition
 from automan_core.tooling import build_benchmarksql_on_linux, prompt_remote_execution_host
 
 
@@ -80,7 +80,10 @@ def main() -> None:
         print_status("OK", f"campaign plan: {campaign_dir}")
     elif args.command == "run":
         source = Path(args.inventory or args.task)
-        run_task_campaign(root=root, task_path=source, plan_only=args.plan_only)
+        try:
+            run_task_campaign(root=root, task_path=source, plan_only=args.plan_only)
+        except CampaignFailedError:
+            raise SystemExit(1)
     elif args.command == "report":
         campaign_id = args.campaign or latest_campaign_id(root)
         if not campaign_id:

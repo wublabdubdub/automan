@@ -43,12 +43,17 @@ def recommend_params(profile: DatabaseProfile, facts: dict[str, str | int], max_
             "max_wal_size": "64GB",
         }
 
-    statement_mem_mb = max(32, min(1024, int(memory_gb * 1024 / max(cpu_threads * 4, 1))))
+    ymatrix_max_connections = max(max_terminals + 50, 128)
     return {
-        "max_connections": str(max_connections),
-        "statement_mem": f"{statement_mem_mb}MB",
-        "max_statement_mem": f"{max(1, int(memory_gb * 0.25))}GB",
-        "gp_vmem_protect_limit": f"{max(1, int(memory_gb * 0.8 * 1024))}MB",
+        "max_connections": str(ymatrix_max_connections),
+        "shared_buffers": f"{_ceil_to_multiple(max(1, int(memory_gb * 0.25)), 8)}GB",
+        "effective_cache_size": f"{_ceil_to_multiple(max(1, int(memory_gb * 0.50)), 8)}GB",
+        "work_mem": "4MB",
+        "maintenance_work_mem": "2GB",
+        "checkpoint_completion_target": "0.9",
+        "max_wal_size": "64GB",
+        "min_wal_size": "8GB",
+        "vacuum_cost_limit": "10000",
     }
 
 
@@ -56,3 +61,6 @@ def recommended_load_workers(facts: dict[str, str | int]) -> int:
     cpu_threads = int(facts.get("cpu_threads", 16))
     return max(4, min(64, int(cpu_threads / 2)))
 
+
+def _ceil_to_multiple(value: int, multiple: int) -> int:
+    return ((value + multiple - 1) // multiple) * multiple

@@ -1,3 +1,5 @@
+create extension if not exists matrixts;
+
 create table bmsql_config (
   cfg_name    varchar(30) primary key,
   cfg_value   varchar(50)
@@ -204,4 +206,3 @@ WITH(
   compress_threshold=1200
 )
 DISTRIBUTED MASTERONLY;
-
