@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, TYPE_CHECKING
+
+import paramiko
 
 from automan_core.models import CollectorConfig, Target
 from automan_core.ssh import CommandResult, SSHClient
@@ -30,6 +33,7 @@ class CheckResult:
 LocalRunner = Callable[..., subprocess.CompletedProcess]
 SSHRunner = Callable[[str, int], CommandResult]
 SSHRunnerFactory = Callable[[Target], SSHRunner]
+SFTPFetcher = Callable[[Target, str, Path], CommandResult]
 
 
 def check_task_readiness(
@@ -37,11 +41,12 @@ def check_task_readiness(
     task: TaskDefinition,
     local_runner: LocalRunner = subprocess.run,
     ssh_runner_factory: SSHRunnerFactory | None = None,
+    sftp_fetcher: SFTPFetcher | None = None,
 ) -> list[CheckResult]:
     results: list[CheckResult] = []
     for target in task.targets:
         results.extend(check_database_connectivity(root, target, local_runner=local_runner))
-    results.extend(check_collector_readiness(root, task.targets, task.collectors, local_runner, ssh_runner_factory))
+    results.extend(check_collector_readiness(root, task.targets, task.collectors, local_runner, ssh_runner_factory, sftp_fetcher))
     return results
 
 
@@ -77,6 +82,7 @@ def check_collector_readiness(
     collectors: CollectorConfig,
     local_runner: LocalRunner = subprocess.run,
     ssh_runner_factory: SSHRunnerFactory | None = None,
+    sftp_fetcher: SFTPFetcher | None = None,
 ) -> list[CheckResult]:
     if not collectors.enabled:
         return [CheckResult("HINT", "collectors disabled; skipping collector check gate")]
@@ -84,6 +90,7 @@ def check_collector_readiness(
     results: list[CheckResult] = []
     if _needs_role(collectors, "execution"):
         results.extend(_check_host_collectors("execution", "local", collectors, local_runner=local_runner, cwd=root))
+        results.extend(check_local_workspace(root / "runs", "execution local", local_runner=local_runner, cwd=root))
 
     for target in targets:
         if not _needs_role(collectors, "database"):
@@ -91,9 +98,12 @@ def check_collector_readiness(
         host_label = f"{target.id}@{target.connection.ssh_host or target.connection.db_host}"
         if _database_collector_is_local(target):
             results.extend(_check_host_collectors("database", host_label, collectors, local_runner=local_runner, cwd=root))
+            results.extend(check_local_workspace(root / "runs", host_label, local_runner=local_runner, cwd=root))
         else:
             runner = _ssh_runner(target, ssh_runner_factory)
             results.extend(_check_host_collectors("database", host_label, collectors, ssh_runner=runner))
+            results.extend(check_ssh_workspace(target.connection.remote_workdir, host_label, runner))
+            results.extend(check_ssh_fetch(target, host_label, runner, root, sftp_fetcher))
     return results
 
 
@@ -143,6 +153,76 @@ def check_ssh_perf_record(frequency: int, label: str, ssh_runner: SSHRunner) -> 
         return [CheckResult("OK", f"{label}: perf record permission ok")]
     error = _command_error(result.stderr, result.stdout, "perf record probe failed")
     return _perf_failure(label, error)
+
+
+def check_local_workspace(
+    path: Path,
+    label: str,
+    local_runner: LocalRunner = subprocess.run,
+    cwd: Path | None = None,
+) -> list[CheckResult]:
+    command = (
+        f"mkdir -p {sh_quote(str(path))} && "
+        f"probe=$(mktemp {sh_quote(str(path / '.automan-collector-check.XXXXXX'))}) && "
+        "printf automan > \"$probe\" && test -s \"$probe\" && rm -f \"$probe\""
+    )
+    try:
+        completed = local_runner(["sh", "-lc", command], cwd=cwd, text=True, capture_output=True, check=False)
+    except OSError as exc:
+        return [CheckResult("FAIL", f"{label}: collector workspace check could not start: {exc}")]
+    if completed.returncode == 0:
+        return [CheckResult("OK", f"{label}: collector workspace writable: {path}")]
+    error = _command_error(completed.stderr, completed.stdout, "collector workspace is not writable")
+    return [
+        CheckResult("FAIL", f"{label}: collector workspace is not writable: {path}; {error}"),
+        CheckResult("HINT", f"grant write permission for the benchmark user on {path}"),
+    ]
+
+
+def check_ssh_workspace(remote_workdir: str, label: str, ssh_runner: SSHRunner) -> list[CheckResult]:
+    base = remote_workdir.rstrip("/") or "/tmp"
+    probe_dir = f"{base}/.automan_collectors/.check"
+    command = (
+        f"mkdir -p {sh_quote(probe_dir)} && "
+        f"probe=$(mktemp {sh_quote(probe_dir + '/probe.XXXXXX')}) && "
+        "printf automan > \"$probe\" && test -s \"$probe\" && rm -f \"$probe\""
+    )
+    result = ssh_runner(command, 60)
+    if result.exit_code == 0:
+        return [CheckResult("OK", f"{label}: remote collector workspace writable: {probe_dir}")]
+    error = _command_error(result.stderr, result.stdout, "remote collector workspace is not writable")
+    return [
+        CheckResult("FAIL", f"{label}: remote collector directory is not writable: {probe_dir}; {error}"),
+        CheckResult("HINT", f"grant write permission for {label} on {probe_dir} or set config_workdir to a writable path"),
+    ]
+
+
+def check_ssh_fetch(
+    target: Target,
+    label: str,
+    ssh_runner: SSHRunner,
+    root: Path,
+    sftp_fetcher: SFTPFetcher | None = None,
+) -> list[CheckResult]:
+    base = target.connection.remote_workdir.rstrip("/") or "/tmp"
+    probe_dir = f"{base}/.automan_collectors/.check"
+    probe_file = f"{probe_dir}/fetch-probe.txt"
+    write = ssh_runner(f"mkdir -p {sh_quote(probe_dir)} && printf automan-fetch > {sh_quote(probe_file)}", 60)
+    if write.exit_code != 0:
+        error = _command_error(write.stderr, write.stdout, "could not create remote fetch probe")
+        return [CheckResult("FAIL", f"{label}: remote SFTP fetch probe could not be created: {error}")]
+    fetcher = sftp_fetcher or _default_sftp_fetcher
+    with tempfile.TemporaryDirectory(dir=str(root) if root.exists() else None) as tmp:
+        local_path = Path(tmp) / "fetch-probe.txt"
+        result = fetcher(target, probe_file, local_path)
+    ssh_runner(f"rm -f {sh_quote(probe_file)}", 30)
+    if result.exit_code == 0:
+        return [CheckResult("OK", f"{label}: remote SFTP fetch ok")]
+    error = _command_error(result.stderr, result.stdout, "SFTP fetch failed")
+    return [
+        CheckResult("FAIL", f"{label}: remote SFTP fetch unavailable: {error}"),
+        CheckResult("HINT", "ensure SSH credentials allow SFTP subsystem and file download from config_workdir"),
+    ]
 
 
 def _check_host_collectors(
@@ -210,6 +290,35 @@ def _ssh_runner(target: Target, factory: SSHRunnerFactory | None) -> SSHRunner:
     return client.run
 
 
+def _default_sftp_fetcher(target: Target, remote_path: str, local_path: Path) -> CommandResult:
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(
+            hostname=target.connection.ssh_host or target.connection.db_host,
+            port=target.connection.ssh_port,
+            username=target.connection.ssh_user,
+            password=target.connection.ssh_password,
+            timeout=10,
+            banner_timeout=10,
+            auth_timeout=10,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        sftp = client.open_sftp()
+        try:
+            sftp.get(remote_path, str(local_path))
+        finally:
+            sftp.close()
+        if local_path.exists() and local_path.read_text(encoding="utf-8", errors="replace") == "automan-fetch":
+            return CommandResult(f"sftp get {remote_path}", 0, str(local_path), "")
+        return CommandResult(f"sftp get {remote_path}", 1, "", "downloaded probe content mismatch")
+    except (OSError, paramiko.SSHException) as exc:
+        return CommandResult(f"sftp get {remote_path}", 255, "", str(exc))
+    finally:
+        client.close()
+
+
 def _perf_probe_command(frequency: int) -> str:
     return "\n".join(
         [
@@ -231,3 +340,7 @@ def _perf_failure(label: str, error: str) -> list[CheckResult]:
 
 def _command_error(stderr: object, stdout: object, fallback: str) -> str:
     return str(stderr or stdout or fallback).strip()
+
+
+def sh_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\"'\"'") + "'"

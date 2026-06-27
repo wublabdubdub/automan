@@ -1,41 +1,9 @@
 ---
 - name: Generate Markdown report
-  ansible.builtin.shell: |
-    set -euo pipefail
-    if {{ automan_python }} -m automan_core report -i {{ automan_config_file | quote }}; then
-      exit 0
-    fi
-    latest="$(ls -1dt runs/campaigns/* 2>/dev/null | head -n 1 || true)"
-    if [ -z "$latest" ]; then
-      mkdir -p runs/report
-      report_path="runs/report/report.md"
-      campaign_name="no campaign"
-    else
-      mkdir -p "$latest/report"
-      report_path="$latest/report/report.md"
-      campaign_name="$(basename "$latest")"
-    fi
-    {
-      echo "# TPC-C Campaign Report"
-      echo
-      echo "- campaign: $campaign_name"
-      echo "- generated_by: ansible role report"
-      echo "- config: {{ automan_config_file }}"
-      echo
-      echo "## Summary"
-      if [ -n "$latest" ] && [ -f "$latest/progress.json" ]; then
-        cat "$latest/progress.json"
-      else
-        echo "No campaign progress file was found."
-      fi
-      echo
-      echo "## Notes"
-      echo "Database parameter changes are manual-only and are not applied by Ansible."
-    } > "$report_path"
-    echo "$report_path"
+  ansible.builtin.command:
+    cmd: "{{ automan_python }} -m automan_core report -i {{ automan_config_file }}"
   args:
     chdir: "{{ automan_root }}"
-    executable: /bin/bash
   register: report_result
   changed_when: true
   tags:

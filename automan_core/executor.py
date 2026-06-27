@@ -490,8 +490,23 @@ def _append_timeline(campaign_dir: Path, event: dict) -> None:
 def _write_command_result(run_dir: Path, phase: str, result: CommandResult) -> None:
     logs = run_dir / "logs"
     logs.mkdir(parents=True, exist_ok=True)
-    (logs / f"{phase}.stdout.log").write_text(result.stdout, encoding="utf-8")
-    (logs / f"{phase}.stderr.log").write_text(result.stderr, encoding="utf-8")
+    stdout_path = logs / f"{phase}.stdout.log"
+    stderr_path = logs / f"{phase}.stderr.log"
+    stdout_path.write_text(result.stdout, encoding="utf-8")
+    stderr_path.write_text(result.stderr, encoding="utf-8")
+    data = {
+        "phase": phase,
+        "command": result.command,
+        "exit_code": result.exit_code,
+        "stdout_path": str(stdout_path),
+        "stderr_path": str(stderr_path),
+        "stdout_bytes": len(result.stdout.encode("utf-8")),
+        "stderr_bytes": len(result.stderr.encode("utf-8")),
+        "recorded_at": datetime.now().isoformat(),
+    }
+    write_json(logs / f"{phase}.result.json", data)
+    with (logs / "command-results.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(data, ensure_ascii=False) + "\n")
 
 
 def _result_dict(result: CommandResult) -> dict:

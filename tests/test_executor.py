@@ -138,6 +138,10 @@ DISTRIBUTED MASTERONLY;
             self.assertEqual(commands, ["./runDatabaseBuild.sh", "./runBenchmark.sh"])
             status = load_yaml(root / "runs" / run.run_id / "status.json")
             self.assertEqual(status["status"], "success")
+            result = load_yaml(root / "runs" / run.run_id / "logs" / "runBenchmark.sh.result.json")
+            self.assertEqual(result["phase"], "runBenchmark.sh")
+            self.assertEqual(result["exit_code"], 0)
+            self.assertTrue((root / "runs" / run.run_id / "logs" / "command-results.jsonl").exists())
 
     def test_first_run_destroys_when_schema_already_has_tpcc_objects(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

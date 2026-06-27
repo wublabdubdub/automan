@@ -32,6 +32,10 @@ DEFAULT_TEMPLATE = """# TPC-C Campaign Report
 
 {{ resource_artifacts }}
 
+## Collection Status
+
+{{ collection_status }}
+
 ## Perf Record Artifacts
 
 {{ perf_artifacts }}
@@ -73,6 +77,7 @@ def generate_report(root: Path, campaign_id: str) -> Path:
         "targets": _render_targets(plan.get("targets", [])),
         "benchmark_results": _render_benchmark_results(agent_context["parsed_results"]),
         "resource_artifacts": _render_artifacts(agent_context["artifact_paths"]["resource"], include_samples=True),
+        "collection_status": _render_collection_status(agent_context["artifact_paths"].get("manifests", [])),
         "perf_artifacts": _render_artifacts(agent_context["artifact_paths"]["perf"], include_samples=False),
         "failures": _render_failures_from_context(agent_context["failures"]),
     }
@@ -201,6 +206,39 @@ def _render_artifacts(artifacts: list[dict[str, Any]], include_samples: bool) ->
     return "\n".join(lines)
 
 
+def _render_collection_status(manifests: list[dict[str, Any]]) -> str:
+    if not manifests:
+        return "- none"
+    lines = [
+        "| Run | Phase | Role | Host Type | Status | Started At | Ended At | Errors | Manifest |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for manifest in manifests:
+        errors = manifest.get("errors") or []
+        if isinstance(errors, list):
+            error_text = "; ".join(str(item) for item in errors) if errors else "-"
+        else:
+            error_text = str(errors)
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _cell(manifest.get("run_id")),
+                    _cell(manifest.get("phase")),
+                    _cell(manifest.get("role")),
+                    _cell(manifest.get("host_type")),
+                    _cell(manifest.get("status")),
+                    _cell(manifest.get("started_at")),
+                    _cell(manifest.get("ended_at")),
+                    _cell(error_text),
+                    f"`{_cell(manifest.get('path'))}`",
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines)
+
+
 def _render_failures(root: Path, runs: list[dict[str, Any]], progress: dict[str, Any]) -> str:
     snippets: list[str] = []
     if progress.get("last_error"):
@@ -256,6 +294,7 @@ def _build_agent_context(root: Path, campaign_dir: Path, plan: dict[str, Any], p
         "progress": progress,
         "parsed_results": parsed_results,
         "artifact_paths": artifact_paths,
+        "collection_status": _collection_status(artifact_paths.get("manifests", [])),
         "failures": failures,
     }
 
@@ -280,6 +319,7 @@ def _run_result(root: Path, run: dict[str, Any]) -> dict[str, Any]:
         "session_end": None,
         "elapsed_seconds": None,
         "source_paths": [],
+        "command_results": _command_results(root, run),
     }
     _merge_result_text_sources(root, run, result)
     _merge_result_csv_sources(root, run, result)
@@ -364,9 +404,42 @@ def _benchmark_text_sources(root: Path, run: dict[str, Any]) -> list[Path]:
     return list(dict.fromkeys(paths))
 
 
+def _command_results(root: Path, run: dict[str, Any]) -> list[dict[str, Any]]:
+    log_dir = _path_value(root, run, "command_log_dir", "logs")
+    results: list[dict[str, Any]] = []
+    if not log_dir.exists():
+        return results
+    for path in sorted(log_dir.glob("*.result.json")):
+        try:
+            data = load_yaml(path)
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            data["path"] = str(path)
+            results.append(data)
+    if results:
+        return results
+    jsonl = log_dir / "command-results.jsonl"
+    if jsonl.exists():
+        for line in jsonl.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                import json
+
+                data = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(data, dict):
+                data["path"] = str(jsonl)
+                results.append(data)
+    return results
+
+
 def _artifact_paths(root: Path, runs: list[dict[str, Any]]) -> dict[str, Any]:
     resource: list[dict[str, Any]] = []
     perf: list[dict[str, Any]] = []
+    manifests: list[dict[str, Any]] = []
     by_run: dict[str, dict[str, list[dict[str, Any]]]] = {}
     for run in runs:
         run_id = str(run.get("run_id", "-"))
@@ -376,6 +449,10 @@ def _artifact_paths(root: Path, runs: list[dict[str, Any]]) -> dict[str, Any]:
         run_perf: list[dict[str, Any]] = []
         if collectors_dir.exists():
             for path in sorted(p for p in collectors_dir.rglob("*") if p.is_file()):
+                if path.name == "manifest.json":
+                    manifest = _manifest_summary(run_id, path)
+                    manifests.append(manifest)
+                    continue
                 artifact = _artifact_summary(run_id, path)
                 if _is_perf_artifact(path):
                     perf.append(artifact)
@@ -384,7 +461,7 @@ def _artifact_paths(root: Path, runs: list[dict[str, Any]]) -> dict[str, Any]:
                     resource.append(artifact)
                     run_resource.append(artifact)
         by_run[run_id] = {"resource": run_resource, "perf": run_perf}
-    return {"resource": resource, "perf": perf, "by_run": by_run}
+    return {"resource": resource, "perf": perf, "manifests": manifests, "by_run": by_run}
 
 
 def _artifact_summary(run_id: str, path: Path) -> dict[str, Any]:
@@ -403,6 +480,62 @@ def _artifact_summary(run_id: str, path: Path) -> dict[str, Any]:
         if _is_resource_artifact(path):
             summary["sample_count"] = _system_sample_count(path, lines)
     return summary
+
+
+def _manifest_summary(run_id: str, path: Path) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    try:
+        loaded = load_yaml(path)
+        if isinstance(loaded, dict):
+            data = loaded
+    except (OSError, ValueError):
+        data = {}
+    collectors = data.get("collectors", {}) if isinstance(data.get("collectors", {}), dict) else {}
+    system = collectors.get("system", {}) if isinstance(collectors.get("system", {}), dict) else {}
+    perf = collectors.get("perf", {}) if isinstance(collectors.get("perf", {}), dict) else {}
+    return {
+        "run_id": run_id,
+        "path": str(path),
+        "size_bytes": path.stat().st_size,
+        "phase": data.get("phase", _phase_from_manifest_path(path)),
+        "role": data.get("role", "-"),
+        "host_type": data.get("host_type", "-"),
+        "status": data.get("status", "unknown"),
+        "started_at": data.get("started_at"),
+        "ended_at": data.get("ended_at"),
+        "errors": data.get("errors", []),
+        "system_status": data.get("system_status") or system.get("status") or ("success" if data.get("include_system") else "disabled"),
+        "perf_status": data.get("perf_status") or perf.get("status") or ("success" if data.get("include_perf") else "disabled"),
+        "include_system": data.get("include_system"),
+        "include_perf": data.get("include_perf"),
+        "commands": data.get("commands", []),
+        "command_results": data.get("command_results", []),
+        "artifacts": data.get("artifacts", []),
+    }
+
+
+def _collection_status(manifests: list[dict[str, Any]]) -> dict[str, Any]:
+    by_run: dict[str, list[dict[str, Any]]] = {}
+    for manifest in manifests:
+        item = {
+            "phase": manifest.get("phase", "-"),
+            "role": manifest.get("role", "-"),
+            "status": manifest.get("status", "unknown"),
+            "system_status": manifest.get("system_status", "unknown"),
+            "perf_status": manifest.get("perf_status", "unknown"),
+            "manifest_path": manifest.get("path", "-"),
+        }
+        by_run.setdefault(str(manifest.get("run_id", "-")), []).append(item)
+    return {"manifests": manifests, "by_run": by_run}
+
+
+def _phase_from_manifest_path(path: Path) -> str:
+    parts = list(path.parts)
+    if "collectors" in parts:
+        index = parts.index("collectors")
+        if len(parts) > index + 1:
+            return parts[index + 1]
+    return "-"
 
 
 def _artifact_lines(path: Path) -> list[str] | None:

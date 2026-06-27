@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import posixpath
 import shlex
 import signal
@@ -7,6 +8,7 @@ import socket
 import stat
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -218,10 +220,17 @@ class _LocalHostCollector(_HostCollector):
         self.perf_frequency = perf_frequency
         self.perf_call_graph = perf_call_graph
         self.processes: list[_LocalProcess] = []
+        self.started_at: str | None = None
+        self.commands: list[dict[str, Any]] = []
+        self.command_results: list[dict[str, Any]] = []
 
     def start(self, phase: str) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.started_at = _now()
+        self.commands = []
+        self.command_results = []
         for name, command, stop_signal, output_dir in self._commands():
+            self.commands.append({"name": name, "command": command, "output_dir": str(output_dir)})
             output_dir.mkdir(parents=True, exist_ok=True)
             stdout = (output_dir / f"{name}.log").open("w", encoding="utf-8")
             stderr = (output_dir / f"{name}.stderr.log").open("w", encoding="utf-8")
@@ -238,24 +247,29 @@ class _LocalHostCollector(_HostCollector):
                 stderr.close()
                 raise
             self.processes.append(_LocalProcess(name, process, stdout, stderr, stop_signal))
+        self._write_manifest(phase, "running")
 
     def stop(self, phase: str) -> None:
         errors = []
-        for item in reversed(self.processes):
-            if item.process.poll() is None:
-                item.process.send_signal(item.stop_signal)
-            try:
-                item.process.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                item.process.kill()
-                item.process.wait(timeout=10)
-                errors.append(f"{item.name} did not stop cleanly")
-            finally:
-                item.stdout_handle.close()
-                item.stderr_handle.close()
-        self.processes = []
-        if self.include_perf:
-            errors.extend(self._export_perf())
+        try:
+            for item in reversed(self.processes):
+                if item.process.poll() is None:
+                    item.process.send_signal(item.stop_signal)
+                try:
+                    item.process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    item.process.kill()
+                    item.process.wait(timeout=10)
+                    errors.append(f"{item.name} did not stop cleanly")
+                finally:
+                    self.command_results.append({"name": item.name, "exit_code": item.process.poll()})
+                    item.stdout_handle.close()
+                    item.stderr_handle.close()
+            self.processes = []
+            if self.include_perf:
+                errors.extend(self._export_perf())
+        finally:
+            self._write_manifest(phase, "failed" if errors else "success", errors)
         if errors:
             raise CollectorError(f"{self.role}: {'; '.join(errors)}")
 
@@ -314,9 +328,57 @@ class _LocalHostCollector(_HostCollector):
         stderr_path = self.perf_dir / f"{output_name}.stderr.log"
         with output_path.open("w", encoding="utf-8") as stdout, stderr_path.open("w", encoding="utf-8") as stderr:
             completed = subprocess.run(command, stdout=stdout, stderr=stderr, text=True, check=False)
+        self.command_results.append(
+            {
+                "name": output_name,
+                "command": command,
+                "exit_code": completed.returncode,
+                "stdout_path": str(output_path),
+                "stderr_path": str(stderr_path),
+            }
+        )
         if completed.returncode != 0:
             return f"{' '.join(command)} exited {completed.returncode}"
         return None
+
+    def _write_manifest(self, phase: str, status: str, errors: list[str] | None = None) -> None:
+        artifacts = _artifact_index(self.output_dir)
+        system_files = [item["relative_path"] for item in artifacts if str(item["relative_path"]).startswith("system/")]
+        perf_files = [item["relative_path"] for item in artifacts if str(item["relative_path"]).startswith("perf/")]
+        manifest = {
+            "phase": phase,
+            "role": self.role,
+            "host_type": "local",
+            "status": status,
+            "started_at": self.started_at,
+            "ended_at": _now() if status != "running" else None,
+            "include_system": self.include_system,
+            "include_perf": self.include_perf,
+            "system_interval_seconds": self.system_interval,
+            "system_tools": sorted(self.system_tools),
+            "perf_frequency": self.perf_frequency,
+            "perf_call_graph": self.perf_call_graph,
+            "commands": self.commands,
+            "command_results": self.command_results,
+            "errors": errors or [],
+            "collectors": {
+                "system": {
+                    "enabled": self.include_system,
+                    "status": _component_status(self.include_system, status, errors),
+                    "files": system_files,
+                    "errors": errors or [] if self.include_system else [],
+                },
+                "perf": {
+                    "enabled": self.include_perf,
+                    "status": _component_status(self.include_perf, status, errors),
+                    "files": perf_files,
+                    "errors": errors or [] if self.include_perf else [],
+                },
+            },
+            "artifacts": artifacts,
+        }
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        (self.output_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 class _RemoteHostCollector(_HostCollector):
@@ -356,17 +418,25 @@ class _RemoteHostCollector(_HostCollector):
         self.system_tools = system_tools
         self.perf_frequency = perf_frequency
         self.perf_call_graph = perf_call_graph
+        self.started_at: str | None = None
+        self.commands: list[dict[str, Any]] = []
+        self.command_results: list[dict[str, Any]] = []
 
     def start(self, phase: str) -> None:
         phase_dir = self._phase_dir(phase)
+        self.started_at = _now()
+        self.commands = []
+        self.command_results = []
         client = self._client()
         try:
             self._run_checked(client, f"mkdir -p {shlex.quote(posixpath.join(phase_dir, 'system'))} {shlex.quote(posixpath.join(phase_dir, 'perf'))}")
             for name, command, _, output_dir in self._commands(phase_dir):
+                self.commands.append({"name": name, "command": command, "remote_output_dir": output_dir})
                 self._run_checked(client, f"command -v {shlex.quote(command[0])} >/dev/null 2>&1")
                 self._run_checked(client, self._background_command(command, output_dir, name))
         finally:
             client.close()
+        self._write_manifest(phase, "running")
 
     def stop(self, phase: str) -> None:
         phase_dir = self._phase_dir(phase)
@@ -375,6 +445,7 @@ class _RemoteHostCollector(_HostCollector):
             errors = []
             for name, _, sig, output_dir in reversed(self._commands(phase_dir)):
                 result = self._run(client, self._stop_command(output_dir, name, sig), timeout=45)
+                self.command_results.append({"name": name, "command": "stop", "exit_code": result[0], "stdout": result[1], "stderr": result[2]})
                 if result[0] != 0:
                     errors.append(f"{name}: {result[2].strip() or result[1].strip() or result[0]}")
             if self.include_perf:
@@ -384,11 +455,13 @@ class _RemoteHostCollector(_HostCollector):
                     f"cd {shlex.quote(perf_dir)} && perf report --stdio -i perf.data > perf.report.txt 2> perf.report.txt.stderr.log",
                 ):
                     code, out, err = self._run(client, command, timeout=300)
+                    self.command_results.append({"name": command.split()[0], "command": command, "exit_code": code, "stdout": out, "stderr": err})
                     if code != 0:
                         errors.append(f"{command}: {err.strip() or out.strip() or code}")
             self._fetch_tree(client, phase_dir, self.output_dir)
         finally:
             client.close()
+        self._write_manifest(phase, "failed" if errors else "success", errors)
         if errors:
             raise CollectorError(f"{self.role}: {'; '.join(errors)}")
 
@@ -496,6 +569,47 @@ class _RemoteHostCollector(_HostCollector):
             else:
                 sftp.get(remote_path, str(local_path))
 
+    def _write_manifest(self, phase: str, status: str, errors: list[str] | None = None) -> None:
+        artifacts = _artifact_index(self.output_dir)
+        system_files = [item["relative_path"] for item in artifacts if str(item["relative_path"]).startswith("system/")]
+        perf_files = [item["relative_path"] for item in artifacts if str(item["relative_path"]).startswith("perf/")]
+        manifest = {
+            "phase": phase,
+            "role": self.role,
+            "host_type": "ssh",
+            "host": self.host,
+            "remote_dir": self._phase_dir(phase),
+            "status": status,
+            "started_at": self.started_at,
+            "ended_at": _now() if status != "running" else None,
+            "include_system": self.include_system,
+            "include_perf": self.include_perf,
+            "system_interval_seconds": self.system_interval,
+            "system_tools": sorted(self.system_tools),
+            "perf_frequency": self.perf_frequency,
+            "perf_call_graph": self.perf_call_graph,
+            "commands": self.commands,
+            "command_results": self.command_results,
+            "errors": errors or [],
+            "collectors": {
+                "system": {
+                    "enabled": self.include_system,
+                    "status": _component_status(self.include_system, status, errors),
+                    "files": system_files,
+                    "errors": errors or [] if self.include_system else [],
+                },
+                "perf": {
+                    "enabled": self.include_perf,
+                    "status": _component_status(self.include_perf, status, errors),
+                    "files": perf_files,
+                    "errors": errors or [] if self.include_perf else [],
+                },
+            },
+            "artifacts": artifacts,
+        }
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        (self.output_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
 
 def _safe_path_part(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in value)
@@ -508,6 +622,33 @@ def _call_graph_args(call_graph: str) -> list[str]:
     if mode == "fp":
         return ["-g"]
     return ["--call-graph", mode]
+
+
+def _artifact_index(base_dir: Path) -> list[dict[str, Any]]:
+    if not base_dir.exists():
+        return []
+    artifacts = []
+    for path in sorted(item for item in base_dir.rglob("*") if item.is_file() and item.name != "manifest.json"):
+        artifacts.append(
+            {
+                "path": str(path),
+                "relative_path": str(path.relative_to(base_dir)),
+                "size_bytes": path.stat().st_size,
+            }
+        )
+    return artifacts
+
+
+def _component_status(enabled: bool, status: str, errors: list[str] | None) -> str:
+    if not enabled:
+        return "disabled"
+    if status == "running":
+        return "running"
+    return "failed" if errors else "success"
+
+
+def _now() -> str:
+    return datetime.now().isoformat()
 
 
 def _local_host_markers() -> set[str]:

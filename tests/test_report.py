@@ -72,6 +72,16 @@ class ReportTest(unittest.TestCase):
                 },
             )
             write_json(run_dir / "status.json", {"run_id": "run1", "status": "failed", "last_error": "ERROR: password authentication failed"})
+            write_json(
+                log_dir / "runBenchmark.sh.result.json",
+                {
+                    "phase": "runBenchmark.sh",
+                    "command": "./runBenchmark.sh tpcc.properties",
+                    "exit_code": 0,
+                    "stdout_path": str(log_dir / "runBenchmark.sh.stdout.log"),
+                    "stderr_path": str(log_dir / "runBenchmark.sh.stderr.log"),
+                },
+            )
             (log_dir / "runBenchmark.sh.stdout.log").write_text(
                 "\n".join(
                     [
@@ -100,6 +110,20 @@ class ReportTest(unittest.TestCase):
             (perf_dir / "perf.data").write_bytes(b"PERF")
             (perf_dir / "perf.script.txt").write_text("postgres 123 [000] 1.23: cycles: ffffffff81000000 cpu_startup_entry\n", encoding="utf-8")
             (perf_dir / "perf.report.txt").write_text("# Samples: 10  of event 'cycles'\n  20.00% postgres\n", encoding="utf-8")
+            (run_dir / "collectors/runBenchmark.sh/database/manifest.json").write_text(
+                json.dumps(
+                    {
+                        "phase": "runBenchmark.sh",
+                        "role": "database",
+                        "status": "success",
+                        "collectors": {
+                            "system": {"status": "success", "files": ["system/vmstat.log"]},
+                            "perf": {"status": "success", "files": ["perf/perf.data", "perf/perf.script.txt", "perf/perf.report.txt"]},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
 
             report_path = generate_report(root, "campaign")
 
@@ -118,12 +142,28 @@ class ReportTest(unittest.TestCase):
             self.assertIn(str(perf_dir / "perf.data"), report)
             self.assertIn(str(perf_dir / "perf.script.txt"), report)
             self.assertIn(str(perf_dir / "perf.report.txt"), report)
+            self.assertIn("collection status", report.lower())
+            self.assertIn("runBenchmark.sh", report)
+            self.assertIn("success", report)
             self.assertIn("ERROR: password authentication failed", report)
             self.assertEqual(agent_context["parsed_results"][0]["measured_tpmc"], 179.55)
             self.assertEqual(agent_context["parsed_results"][0]["measured_tpmtotal"], 329.17)
             self.assertEqual(agent_context["parsed_results"][0]["elapsed_seconds"], 2)
+            self.assertEqual(agent_context["parsed_results"][0]["command_results"][0]["phase"], "runBenchmark.sh")
+            self.assertEqual(agent_context["parsed_results"][0]["command_results"][0]["exit_code"], 0)
             self.assertEqual(agent_context["artifact_paths"]["resource"][0]["sample_count"], 2)
             self.assertTrue(any(path["path"] == str(perf_dir / "perf.data") for path in agent_context["artifact_paths"]["perf"]))
+            self.assertEqual(
+                agent_context["collection_status"]["by_run"]["run1"][0],
+                {
+                    "phase": "runBenchmark.sh",
+                    "role": "database",
+                    "status": "success",
+                    "system_status": "success",
+                    "perf_status": "success",
+                    "manifest_path": str(run_dir / "collectors/runBenchmark.sh/database/manifest.json"),
+                },
+            )
             self.assertIn("plan", agent_context)
             self.assertIn("progress", agent_context)
             self.assertTrue(agent_context["failures"])
