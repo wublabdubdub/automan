@@ -14,6 +14,7 @@ all:
           ansible_port: 22
           ansible_user: root
           ansible_password: ""
+          ansible_connection: local
           automan_workdir: /root/automan
 
     # Benchmark target. The group name, "pg", becomes the target id.
