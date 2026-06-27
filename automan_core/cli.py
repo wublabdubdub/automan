@@ -6,6 +6,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from automan_core.cleanup import cleanup_tpcc
 from automan_core.progress import show_progress
 from automan_core.report import generate_report, latest_campaign_id
 from automan_core.task_runner import load_task_definition, run_task_campaign, validate_task_definition
@@ -37,6 +38,9 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser = subparsers.add_parser("report", help="generate Markdown report for a campaign")
     report_parser.add_argument("-i", "--inventory", help="inventory/config YAML path; accepted for playbook compatibility")
     report_parser.add_argument("--campaign", help="campaign id; defaults to latest campaign")
+
+    cleanup_parser = subparsers.add_parser("cleanup", help="drop bmsql_% TPC-C objects for inventory targets")
+    cleanup_parser.add_argument("-i", "--inventory", required=True, help="inventory/config YAML path")
 
     progress_parser = subparsers.add_parser("progress", help="show campaign progress")
     progress_parser.add_argument("--campaign", help="campaign id to inspect")
@@ -89,6 +93,10 @@ def main() -> None:
             print_status("FAIL", f"campaign {campaign_id} is missing required file: {exc.filename}")
             raise SystemExit(1) from exc
         print_status("OK", f"report: {report_path}")
+    elif args.command == "cleanup":
+        failures = cleanup_tpcc(root, Path(args.inventory))
+        if failures:
+            raise SystemExit(1)
     elif args.command == "progress":
         print_status("OK", "showing campaign progress")
         show_progress(root=root, campaign_id=args.campaign, watch=args.watch, interval=args.interval)

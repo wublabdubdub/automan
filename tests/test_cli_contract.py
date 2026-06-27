@@ -86,6 +86,21 @@ class CliContractTest(unittest.TestCase):
             self.assertIn("[FAIL]", text)
             self.assertIn("campaign missing", text)
 
+    def test_cleanup_command_uses_inventory_targets(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        completed = subprocess_completed(returncode=0, stdout="DO\n", stderr="")
+        output = io.StringIO()
+
+        with patch("automan_core.cleanup.subprocess.run", return_value=completed) as run:
+            with patch("sys.argv", ["automan", "cleanup", "-i", str(repo / "conf" / "tpcc" / "pg.yml")]):
+                with redirect_stdout(output):
+                    cli.main()
+
+        text = output.getvalue()
+        self.assertIn("[ OK ] pg: dropped bmsql_% objects", text)
+        self.assertEqual(run.call_count, 1)
+        self.assertIn("psql", run.call_args.args[0][0])
+
 
 def _copy_minimal_repo_files(src: Path, dst: Path) -> None:
     for relative in [
@@ -95,6 +110,12 @@ def _copy_minimal_repo_files(src: Path, dst: Path) -> None:
         target = dst / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text((src / relative).read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def subprocess_completed(returncode: int, stdout: str, stderr: str):
+    from subprocess import CompletedProcess
+
+    return CompletedProcess(args=["psql"], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 if __name__ == "__main__":

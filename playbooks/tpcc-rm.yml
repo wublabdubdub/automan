@@ -3,59 +3,22 @@
   hosts: "{{ automan_hosts | default('bench') }}"
   gather_facts: false
   vars:
-    tpcc_rm_schema: "{{ db_schema | default('public', true) }}"
-    tpcc_rm_query: |
-      do $$
-      declare
-        item record;
-      begin
-        for item in
-          select
-            n.nspname,
-            c.relname,
-            c.relkind
-          from pg_catalog.pg_class c
-          join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-          where n.nspname = '{{ tpcc_rm_schema }}'
-            and c.relname like 'bmsql_%'
-        loop
-          if item.relkind = 'S' then
-            execute format('drop sequence if exists %I.%I cascade', item.nspname, item.relname);
-          else
-            execute format('drop table if exists %I.%I cascade', item.nspname, item.relname);
-          end if;
-        end loop;
-      end $$;
+    automan_inventory_sources_safe: "{{ ansible_inventory_sources | default(['automan.yml'], true) }}"
+    automan_config_file: "{{ automan_config | default(automan_inventory_sources_safe[0], true) }}"
+    automan_root: "{{ automan_workdir | default('/root/automan', true) }}"
+    automan_python: "{{ python_bin | default('python3.8', true) }}"
   tasks:
-    - name: Check database cleanup variables
-      ansible.builtin.assert:
-        that:
-          - db_host is defined
-          - db_user is defined
-        fail_msg: "Set db_host and db_user in inventory or pass them with -e before running tpcc-rm.yml."
-      tags:
-        - check
-        - db_check
-        - tpcc_rm
-
-    - name: Drop bmsql_* tables and sequences
+    - name: Drop bmsql_% tables and sequences through automan inventory
       ansible.builtin.command:
         argv:
-          - psql
-          - -h
-          - "{{ db_host }}"
-          - -p
-          - "{{ db_port | default(5432, true) | string }}"
-          - -U
-          - "{{ db_user }}"
-          - -d
-          - "{{ db_name | default('postgres', true) }}"
-          - -v
-          - ON_ERROR_STOP=1
-          - -c
-          - "{{ tpcc_rm_query }}"
-      environment:
-        PGPASSWORD: "{{ db_password | default('', true) }}"
+          - "{{ automan_python }}"
+          - -m
+          - automan_core
+          - cleanup
+          - -i
+          - "{{ automan_config_file }}"
+      args:
+        chdir: "{{ automan_root }}"
       changed_when: true
       tags:
         - tpcc_rm
