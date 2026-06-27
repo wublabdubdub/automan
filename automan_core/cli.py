@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("-i", "--inventory", help="inventory/config YAML path; accepted for playbook compatibility")
     report_parser.add_argument("--campaign", help="campaign id; defaults to latest campaign")
 
-    cleanup_parser = subparsers.add_parser("cleanup", help="drop bmsql_% TPC-C objects for inventory targets")
+    cleanup_parser = subparsers.add_parser("cleanup", help="drop bmsql_%% TPC-C objects for inventory targets")
     cleanup_parser.add_argument("-i", "--inventory", required=True, help="inventory/config YAML path")
 
     progress_parser = subparsers.add_parser("progress", help="show campaign progress")
