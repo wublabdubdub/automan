@@ -58,12 +58,10 @@ class CollectorsTest(unittest.TestCase):
                 },
             )
 
-            with (
-                patch("automan_core.collectors.subprocess.Popen", side_effect=fake_popen),
-                patch("automan_core.collectors.subprocess.run", side_effect=fake_run),
-            ):
-                manager.start_phase("runBenchmark.sh")
-                manager.stop_phase("runBenchmark.sh")
+            with patch("automan_core.collectors.subprocess.Popen", side_effect=fake_popen):
+                with patch("automan_core.collectors.subprocess.run", side_effect=fake_run):
+                    manager.start_phase("runBenchmark.sh")
+                    manager.stop_phase("runBenchmark.sh")
 
             output_dir = root / "runs" / run.run_id / "collectors" / "runBenchmark.sh" / "database"
             manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
