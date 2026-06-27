@@ -1,7 +1,3 @@
 #!/usr/bin/env ansible-playbook
 ---
 - import_playbook: playbooks/report.yml
-  tags:
-    - collector
-    - archive
-    - report
