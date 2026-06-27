@@ -19,6 +19,7 @@ from automan_core.models import RunSpec, Target
 
 SYSTEM_PHASES = {"runDatabaseBuild.sh", "runBenchmark.sh"}
 DEFAULT_PERF_PHASES = {"runBenchmark.sh"}
+REMOTE_FETCH_MAX_BYTES = 128 * 1024 * 1024
 
 
 class CollectorError(RuntimeError):
@@ -567,6 +568,24 @@ class _RemoteHostCollector(_HostCollector):
             if stat.S_ISDIR(item.st_mode):
                 self._fetch_tree_with_sftp(sftp, remote_path, local_path)
             else:
+                if item.st_size > REMOTE_FETCH_MAX_BYTES:
+                    marker = local_path.with_name(f"{local_path.name}.skipped.txt")
+                    marker.parent.mkdir(parents=True, exist_ok=True)
+                    message = (
+                        f"skipped remote collector artifact larger than "
+                        f"{REMOTE_FETCH_MAX_BYTES} bytes: {remote_path} ({item.st_size} bytes)\n"
+                    )
+                    marker.write_text(message, encoding="utf-8")
+                    self.command_results.append(
+                        {
+                            "name": "fetch-skip",
+                            "command": f"sftp get {remote_path}",
+                            "exit_code": 0,
+                            "stdout": message,
+                            "stderr": "",
+                        }
+                    )
+                    continue
                 sftp.get(remote_path, str(local_path))
 
     def _write_manifest(self, phase: str, status: str, errors: list[str] | None = None) -> None:

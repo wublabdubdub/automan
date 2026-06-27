@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from automan_core.collectors import CollectorManager, _LocalHostCollector
+from automan_core.collectors import CollectorManager, _LocalHostCollector, _RemoteHostCollector
 from automan_core.models import ConnectionInfo, DatabaseProfile, RunSpec, Target
 
 
@@ -100,6 +100,37 @@ class CollectorsTest(unittest.TestCase):
             self.assertTrue(benchmark_collectors[0].include_perf)
             self.assertEqual(destroy_collectors, [])
 
+    def test_remote_collector_skips_oversized_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "collectors"
+            collector = _RemoteHostCollector(
+                "database",
+                output_dir,
+                host="db.example",
+                port=22,
+                user="mxadmin",
+                password="secret",
+                remote_base_dir="/home/mxadmin/automan",
+                run_id="run1",
+                include_system=True,
+                include_perf=True,
+                system_interval=1,
+                system_tools={"vmstat"},
+                perf_frequency=99,
+                perf_call_graph="fp",
+            )
+
+            collector._fetch_tree_with_sftp(
+                FakeSFTP({"perf.script.txt": 129 * 1024 * 1024}),
+                "/remote/collectors",
+                output_dir,
+            )
+
+            marker = output_dir / "perf.script.txt.skipped.txt"
+            self.assertTrue(marker.exists())
+            self.assertIn("skipped remote collector artifact larger than", marker.read_text(encoding="utf-8"))
+            self.assertEqual(collector.command_results[0]["name"], "fetch-skip")
+
 
 class FakeProcess:
     def poll(self):
@@ -125,6 +156,24 @@ def fake_popen(command, stdout, stderr, text, cwd):
         perf_data.parent.mkdir(parents=True, exist_ok=True)
         perf_data.write_bytes(b"PERF")
     return FakeProcess()
+
+
+class FakeSFTPAttr:
+    def __init__(self, filename: str, size: int) -> None:
+        self.filename = filename
+        self.st_size = size
+        self.st_mode = 0
+
+
+class FakeSFTP:
+    def __init__(self, files: dict[str, int]) -> None:
+        self.files = files
+
+    def listdir_attr(self, remote_dir):
+        return [FakeSFTPAttr(name, size) for name, size in self.files.items()]
+
+    def get(self, remote_path, local_path):
+        Path(local_path).write_text("downloaded", encoding="utf-8")
 
 
 def fake_run(command, **kwargs):

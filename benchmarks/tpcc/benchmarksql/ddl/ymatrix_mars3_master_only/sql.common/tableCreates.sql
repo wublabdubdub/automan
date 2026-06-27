@@ -23,15 +23,7 @@ create table bmsql_warehouse (
   w_city      varchar(20),
   w_state     char(2),
   w_zip       char(9)
-)
-USING MARS3
-WITH(
-  mars3options='prefer_load_mode=single,rowstore_size=64',
-  compresstype=zstd,
-  compresslevel=1,
-  compress_threshold=1200
-)
-DISTRIBUTED MASTERONLY;
+);
 
 create table bmsql_district (
   d_w_id       integer       not null,
@@ -45,15 +37,7 @@ create table bmsql_district (
   d_city       varchar(20),
   d_state      char(2),
   d_zip        char(9)
-)
-USING MARS3
-WITH(
-  mars3options='prefer_load_mode=single,rowstore_size=64',
-  compresstype=zstd,
-  compresslevel=1,
-  compress_threshold=1200
-)
-DISTRIBUTED MASTERONLY;
+);
 
 create table bmsql_customer (
   c_w_id         integer        not null,
@@ -77,15 +61,7 @@ create table bmsql_customer (
   c_since        timestamp,
   c_middle       char(2),
   c_data         varchar(500)
-)
-USING MARS3
-WITH(
-  mars3options='prefer_load_mode=single,rowstore_size=64',
-  compresstype=zstd,
-  compresslevel=1,
-  compress_threshold=1200
-)
-DISTRIBUTED MASTERONLY;
+);
 
 create sequence bmsql_hist_id_seq;
 
@@ -99,29 +75,13 @@ create table bmsql_history (
   h_date   timestamp,
   h_amount decimal(6,2),
   h_data   varchar(24)
-)
-USING MARS3
-WITH(
-  mars3options='prefer_load_mode=single,rowstore_size=64',
-  compresstype=zstd,
-  compresslevel=1,
-  compress_threshold=1200
-)
-DISTRIBUTED MASTERONLY;
+);
 
 create table bmsql_new_order (
   no_w_id  integer   not null,
   no_d_id  integer   not null,
   no_o_id  integer   not null
-)
-USING MARS3
-WITH(
-  mars3options='prefer_load_mode=single,rowstore_size=64',
-  compresstype=zstd,
-  compresslevel=1,
-  compress_threshold=1200
-)
-DISTRIBUTED MASTERONLY;
+);
 
 create table bmsql_oorder (
   o_w_id       integer      not null,
@@ -132,15 +92,7 @@ create table bmsql_oorder (
   o_ol_cnt     integer,
   o_all_local  integer,
   o_entry_d    timestamp
-)
-USING MARS3
-WITH(
-  mars3options='prefer_load_mode=single,rowstore_size=64',
-  compresstype=zstd,
-  compresslevel=1,
-  compress_threshold=1200
-)
-DISTRIBUTED MASTERONLY;
+);
 
 create table bmsql_order_line (
   ol_w_id         integer   not null,
@@ -153,15 +105,7 @@ create table bmsql_order_line (
   ol_supply_w_id  integer,
   ol_quantity     integer,
   ol_dist_info    char(24)
-)
-USING MARS3
-WITH(
-  mars3options='prefer_load_mode=single,rowstore_size=64',
-  compresstype=zstd,
-  compresslevel=1,
-  compress_threshold=1200
-)
-DISTRIBUTED MASTERONLY;
+);
 
 create table bmsql_item (
   i_id     integer      not null,
@@ -197,12 +141,4 @@ create table bmsql_stock (
   s_dist_08    char(24),
   s_dist_09    char(24),
   s_dist_10    char(24)
-)
-USING MARS3
-WITH(
-  mars3options='prefer_load_mode=single,rowstore_size=64',
-  compresstype=zstd,
-  compresslevel=1,
-  compress_threshold=1200
-)
-DISTRIBUTED MASTERONLY;
+);
