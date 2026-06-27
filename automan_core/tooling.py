@@ -22,21 +22,9 @@ class RemoteExecutionHost:
 
 def build_benchmarksql_on_linux(root: Path, remote: RemoteExecutionHost) -> list[CommandResult]:
     remote_tool_dir = f"{remote.workdir.rstrip('/')}/tools/benchmarksql"
-    remote_patch = f"{remote.workdir.rstrip('/')}/patches/benchmarksql/allow-overloaded-terminals.patch"
     results = [
         SSHClient(remote.host, remote.port, remote.user, remote.password).run(
-            (
-                "set -e; "
-                f"cd {remote_tool_dir}; "
-                f"if git apply --check {remote_patch}; then "
-                f"git apply {remote_patch}; "
-                f"elif git apply --reverse --check {remote_patch}; then "
-                "echo 'BenchmarkSQL patch already applied'; "
-                "else "
-                "echo 'BenchmarkSQL patch cannot be applied cleanly' >&2; exit 1; "
-                "fi; "
-                "ant"
-            ),
+            f"set -e; cd {remote_tool_dir}; ant",
             timeout=1200,
         )
     ]

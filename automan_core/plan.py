@@ -55,7 +55,6 @@ def render_properties(root: Path, target: Target, run: RunSpec) -> str:
         "terminals": str(run.terminals),
         "run_minutes": str(run.run_mins),
         "limit_txns_per_min": "10000000",
-        "allow_overloaded_terminals": "true" if run.terminals > run.warehouse * 10 else "false",
         "result_directory": f"{root / 'runs' / run.run_id / 'benchmark' / 'result'}",
     }
     return Template(text).safe_substitute(values)

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from automan_core.models import ConnectionInfo, Target, TpccMatrix
-from automan_core.plan import build_run_specs, render_properties, write_campaign_files
+from automan_core.plan import build_run_specs, write_campaign_files
 from automan_core.profiles import load_database_profiles, load_database_types
 
 
@@ -99,27 +99,6 @@ class ProfileAndPlanTest(unittest.TestCase):
             resolved_task = (root / "runs" / runs[0].run_id / "resolved-task.yaml").read_text(encoding="utf-8")
             self.assertIn("manual_parameter_commands_path:", resolved_task)
             self.assertIn("benchmark_result_dir:", resolved_task)
-
-    def test_render_properties_marks_overloaded_terminals(self) -> None:
-        profiles = load_database_profiles(self.root)
-        conn = ConnectionInfo(
-            ssh_host="127.0.0.1",
-            ssh_port=22,
-            ssh_user="root",
-            ssh_password="secret",
-            remote_workdir="/root/automan",
-            db_host="127.0.0.1",
-            db_port=5432,
-            db_name="postgres",
-            db_user="postgres",
-            db_password="secret",
-        )
-        target = Target(profiles["postgresql_heap_single_node"], conn, {}, {}, False, {})
-        normal_run = build_run_specs(self.root, "campaign", [target], TpccMatrix([10], [100], 8, 5))[0]
-        overloaded_run = build_run_specs(self.root, "campaign", [target], TpccMatrix([10], [500], 8, 5))[0]
-
-        self.assertIn("allowOverloadedTerminals=false", render_properties(self.root, target, normal_run))
-        self.assertIn("allowOverloadedTerminals=true", render_properties(self.root, target, overloaded_run))
 
 
 if __name__ == "__main__":

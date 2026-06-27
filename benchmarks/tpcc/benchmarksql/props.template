@@ -16,7 +16,6 @@ runMins=${run_minutes}
 limitTxnsPerMin=${limit_txns_per_min}
 
 terminalWarehouseFixed=false
-allowOverloadedTerminals=${allow_overloaded_terminals}
 useStoredProcedures=false
 
 newOrderWeight=45
