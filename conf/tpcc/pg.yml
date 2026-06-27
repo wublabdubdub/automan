@@ -4,6 +4,22 @@ all:
   vars:
     benchmark: tpcc
     campaign_id:
+    # Collector gate. `automan check` verifies these tools and permissions before a run.
+    # Defaults: system metrics every 1 second; perf record at 99 Hz; benchmark phase only.
+    collectors:
+      enabled: true
+      system:
+        enabled: true
+        interval_seconds: 1
+        host_roles: [database]
+        tools: [vmstat, iostat, pidstat, mpstat]
+      perf:
+        enabled: true
+        phases: [runBenchmark.sh]
+        host_roles: [database]
+        frequency: 99
+        call_graph: fp
+        record_scope: system
 
   children:
     # Execution host: automan and BenchmarkSQL run here.

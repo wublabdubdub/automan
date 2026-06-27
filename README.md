@@ -2,7 +2,7 @@
 
 Pigsty-style benchmark automation for PostgreSQL and YMatrix.
 
-Automan is a config-driven operations toolkit for database benchmark runs. The current production target is TPC-C through BenchmarkSQL, with manual-only database parameter changes, repeatable run archives, progress tracking, and Markdown report output.
+Automan is a config-driven operations toolkit for database benchmark runs. The current production target is TPC-C through BenchmarkSQL, with manual-only database parameter changes, preflight collector checks, CPU/memory/IO and `perf record` artifacts, repeatable run archives, progress tracking, and objective report output.
 
 ## Quick Start
 
@@ -48,11 +48,12 @@ validate config
 generate campaign plan
 generate manual parameter commands
 check execution environment
+check collector tools and perf record permission
 prepare BenchmarkSQL workspace
 schema probe
 destroy existing bmsql_* objects when needed
 build database
-run benchmark
+run benchmark while collecting system metrics and perf record artifacts
 archive logs and status
 generate report
 ```
@@ -63,6 +64,7 @@ For the first run of each target, `runDatabaseDestroy.sh` is skipped only when s
 
 - Do not run long benchmarks from the source workspace.
 - Do not let automan modify database parameters automatically.
+- Do not start benchmark runs until `./check.yml -i automan.yml` confirms database connectivity and all configured collectors are usable.
 - Keep passwords in local configs only; generated plans redact secrets.
 - Treat BenchmarkSQL output containing `FATAL`, `ERROR`, `Exception`, `Failed to`, or authentication failure as a failed phase even if the shell script returns `0`.
 

@@ -6,6 +6,31 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class SystemCollectorConfig:
+    enabled: bool = True
+    interval_seconds: int = 1
+    host_roles: list[str] = field(default_factory=lambda: ["database"])
+    tools: list[str] = field(default_factory=lambda: ["vmstat", "iostat", "pidstat", "mpstat"])
+
+
+@dataclass(frozen=True)
+class PerfCollectorConfig:
+    enabled: bool = True
+    phases: list[str] = field(default_factory=lambda: ["runBenchmark.sh"])
+    host_roles: list[str] = field(default_factory=lambda: ["database"])
+    frequency: int = 99
+    call_graph: str = "fp"
+    record_scope: str = "system"
+
+
+@dataclass(frozen=True)
+class CollectorConfig:
+    enabled: bool = True
+    system: SystemCollectorConfig = field(default_factory=SystemCollectorConfig)
+    perf: PerfCollectorConfig = field(default_factory=PerfCollectorConfig)
+
+
+@dataclass(frozen=True)
 class DatabaseProfile:
     id: str
     display_name: str

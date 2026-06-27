@@ -10,8 +10,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
+from automan_core.collectors import CollectorError, CollectorManager, NullCollectorManager
 from automan_core.config import load_yaml, write_json
-from automan_core.models import RunSpec, Target
+from automan_core.models import CollectorConfig, RunSpec, Target
 from automan_core.ssh import CommandResult
 
 
@@ -22,9 +23,16 @@ FATAL_OUTPUT_PATTERNS = (
     re.compile(r"Failed to"),
     re.compile(r"password authentication failed", re.IGNORECASE),
 )
+COLLECTED_PHASES = {"runDatabaseBuild.sh", "runBenchmark.sh"}
 
 
-def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: list[RunSpec]) -> None:
+def execute_campaign(
+    root: Path,
+    campaign_id: str,
+    targets: list[Target],
+    runs: list[RunSpec],
+    collectors: CollectorConfig | dict | None = None,
+) -> None:
     campaign_dir = root / "runs" / "campaigns" / campaign_id
     _set_campaign_status(campaign_dir, "running")
     execution_host_check = _preflight_execution_host(targets)
@@ -61,7 +69,7 @@ def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: 
     had_exception = False
     with ThreadPoolExecutor(max_workers=len(runs_by_host)) as pool:
         futures = [
-            pool.submit(_execute_host_queue, root, campaign_id, host_runs, target_by_id)
+            pool.submit(_execute_host_queue, root, campaign_id, host_runs, target_by_id, collectors)
             for host_runs in runs_by_host.values()
         ]
         for future in as_completed(futures):
@@ -77,13 +85,25 @@ def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: 
         _set_campaign_status(campaign_dir, "success")
 
 
-def _execute_host_queue(root: Path, campaign_id: str, runs: list[RunSpec], target_by_id: dict[str, Target]) -> None:
+def _execute_host_queue(
+    root: Path,
+    campaign_id: str,
+    runs: list[RunSpec],
+    target_by_id: dict[str, Target],
+    collectors: CollectorConfig | dict | None = None,
+) -> None:
     for run in runs:
         target = target_by_id[run.target_id]
-        _execute_run(root, campaign_id, target, run)
+        _execute_run(root, campaign_id, target, run, collectors)
 
 
-def _execute_run(root: Path, campaign_id: str, target: Target, run: RunSpec) -> None:
+def _execute_run(
+    root: Path,
+    campaign_id: str,
+    target: Target,
+    run: RunSpec,
+    collectors: CollectorConfig | dict | None = None,
+) -> None:
     run_dir = root / "runs" / run.run_id
     campaign_dir = root / "runs" / "campaigns" / campaign_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -114,13 +134,37 @@ def _execute_run(root: Path, campaign_id: str, target: Target, run: RunSpec) -> 
         commands.insert(0, ("runDatabaseDestroy.sh", ["./runDatabaseDestroy.sh", str(run.properties_path)]))
     else:
         _append_timeline(campaign_dir, {"event": "phase_skipped", "run_id": run.run_id, "target": run.target_id, "phase": "runDatabaseDestroy.sh", "reason": "first_run_empty_schema"})
+    collector_manager = _collector_manager(root, target, run, collectors)
     for phase, command in commands:
         _set_run_status(run_dir, "running", phase)
         _update_progress(campaign_dir, run.target_id, "running", run.run_id, phase)
-        result = _run_local(command, cwd=run.benchmark_run_dir, timeout=10800)
+        collector_error = None
+        if phase in COLLECTED_PHASES:
+            try:
+                collector_manager.start_phase(phase)
+                _append_timeline(campaign_dir, {"event": "collector_start", "run_id": run.run_id, "target": run.target_id, "phase": phase})
+            except CollectorError as exc:
+                phase_error = f"{phase}: {exc}"
+                _append_timeline(campaign_dir, {"event": "collector_failed", "run_id": run.run_id, "target": run.target_id, "phase": phase, "error": str(exc)})
+                _set_run_status(run_dir, "failed", phase, phase_error)
+                _mark_run_finished(campaign_dir, run.target_id, failed=True, last_error=phase_error)
+                return
+            try:
+                result = _run_local(command, cwd=run.benchmark_run_dir, timeout=10800)
+            except Exception as exc:
+                result = CommandResult(" ".join(command), 1, "", str(exc))
+            finally:
+                try:
+                    collector_manager.stop_phase(phase)
+                    _append_timeline(campaign_dir, {"event": "collector_stop", "run_id": run.run_id, "target": run.target_id, "phase": phase})
+                except CollectorError as exc:
+                    collector_error = str(exc)
+                    _append_timeline(campaign_dir, {"event": "collector_failed", "run_id": run.run_id, "target": run.target_id, "phase": phase, "error": collector_error})
+        else:
+            result = _run_local(command, cwd=run.benchmark_run_dir, timeout=10800)
         _write_command_result(run_dir, phase, result)
         _append_timeline(campaign_dir, {"event": "phase_done", "run_id": run.run_id, "target": run.target_id, "phase": phase, "exit_code": result.exit_code})
-        phase_error = _phase_failure(result)
+        phase_error = _combine_phase_errors(_phase_failure(result), collector_error)
         if phase_error:
             _set_run_status(run_dir, "failed", phase, phase_error)
             _mark_run_finished(campaign_dir, run.target_id, failed=True, last_error=phase_error)
@@ -139,6 +183,46 @@ def _prepare_benchmark_run_dir(root: Path, target: Target, run: RunSpec) -> None
     _install_ddl_profile(root, target, run)
     if target.profile.storage_engine == "mars3":
         _render_mars3_table_creates(run.benchmark_run_dir, target.mars3_options)
+
+
+def _collector_manager(
+    root: Path,
+    target: Target,
+    run: RunSpec,
+    collectors: CollectorConfig | dict | None,
+) -> CollectorManager | NullCollectorManager:
+    config = _collector_config_dict(root, collectors)
+    if not config.get("enabled", True):
+        return NullCollectorManager()
+    return CollectorManager(root, target, run, config=config)
+
+
+def _collector_config_dict(root: Path, collectors: CollectorConfig | dict | None) -> dict:
+    if isinstance(collectors, CollectorConfig):
+        return {
+            "enabled": collectors.enabled,
+            "system": {
+                "enabled": collectors.system.enabled,
+                "interval_seconds": collectors.system.interval_seconds,
+                "host_roles": collectors.system.host_roles,
+                "tools": collectors.system.tools,
+            },
+            "perf": {
+                "enabled": collectors.perf.enabled,
+                "phases": collectors.perf.phases,
+                "host_roles": collectors.perf.host_roles,
+                "frequency": collectors.perf.frequency,
+                "call_graph": collectors.perf.call_graph,
+                "record_scope": collectors.perf.record_scope,
+            },
+        }
+    if isinstance(collectors, dict):
+        return collectors
+    config_path = root / "configs" / "collectors" / "default.yaml"
+    if not config_path.exists():
+        return {"enabled": False}
+    config = load_yaml(config_path).get("collectors", {})
+    return config if isinstance(config, dict) else {"enabled": False}
 
 
 def _preflight_benchmarksql(root: Path) -> CommandResult:
@@ -310,6 +394,14 @@ def _phase_failure(result: CommandResult) -> str | None:
     if fatal_line:
         return f"{result.command}: {fatal_line}"
     return None
+
+
+def _combine_phase_errors(command_error: str | None, collector_error: str | None) -> str | None:
+    if command_error and collector_error:
+        return f"{command_error}; collector error: {collector_error}"
+    if collector_error:
+        return f"collector error: {collector_error}"
+    return command_error
 
 
 def _fatal_output_line(result: CommandResult) -> str | None:

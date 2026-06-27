@@ -67,6 +67,7 @@ def write_campaign_files(
     matrix: TpccMatrix,
     runs: list[RunSpec],
     mars3_options: dict[str, Any],
+    collectors: dict[str, Any] | None = None,
 ) -> Path:
     campaign_dir = root / "runs" / "campaigns" / campaign_id
     campaign_dir.mkdir(parents=True, exist_ok=True)
@@ -104,6 +105,7 @@ def write_campaign_files(
             "run_mins": matrix.run_mins,
         },
         "mars3_options": mars3_options,
+        "collectors": collectors or {},
         "runs": [
             {
                 "run_id": run.run_id,
@@ -123,6 +125,7 @@ def write_campaign_files(
                 "command_log_dir": str(root / "runs" / run.run_id / "logs"),
                 "benchmark_parent_dir": str(root / "runs" / run.run_id / "benchmark"),
                 "benchmark_result_dir": str(root / "runs" / run.run_id / "benchmark" / "result"),
+                "collector_dir": str(root / "runs" / run.run_id / "collectors"),
                 "skip_destroy": run.skip_destroy,
             }
             for run in runs
@@ -208,6 +211,7 @@ def write_campaign_files(
                 "command_log_dir": str(run_dir / "logs"),
                 "benchmark_parent_dir": str(run_dir / "benchmark"),
                 "benchmark_result_dir": str(run_dir / "benchmark" / "result"),
+                "collector_dir": str(run_dir / "collectors"),
                 "skip_destroy": run.skip_destroy,
                 "command_sequence": [
                     *(["schema_probe", "runDatabaseDestroy.sh when bmsql_* exists"] if run.skip_destroy else ["runDatabaseDestroy.sh"]),

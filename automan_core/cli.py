@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import argparse
 import shutil
-import os
-import subprocess
 from pathlib import Path
 
+from automan_core.checks import check_task_readiness
 from automan_core.cleanup import cleanup_tpcc
 from automan_core.progress import show_progress
 from automan_core.report import generate_report, latest_campaign_id
@@ -156,29 +155,10 @@ def check_inventory(root: Path, inventory: Path) -> int:
     if failures:
         return failures
     task = load_task_definition(root, inventory)
-    for target in task.targets:
-        command = [
-            "psql",
-            "-h",
-            target.connection.db_host,
-            "-p",
-            str(target.connection.db_port),
-            "-U",
-            target.connection.db_user,
-            "-d",
-            target.connection.db_name,
-            "-tAc",
-            "select 1;",
-        ]
-        env = os.environ.copy()
-        env["PGPASSWORD"] = target.connection.db_password
-        completed = subprocess.run(command, cwd=root, text=True, capture_output=True, env=env, check=False)
-        if completed.returncode == 0 and completed.stdout.strip() == "1":
-            print_status("OK", f"{target.id}: database connectivity ok")
-        else:
+    for result in check_task_readiness(root, task):
+        print_status(result.level, result.text)
+        if result.level == "FAIL":
             failures += 1
-            error = (completed.stderr or completed.stdout or "psql connectivity check failed").strip()
-            print_status("FAIL", f"{target.id}: {error}")
     return failures
 
 

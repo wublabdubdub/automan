@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from automan_core import cli
+from automan_core.checks import CheckResult
 
 
 class CliContractTest(unittest.TestCase):
@@ -63,6 +64,19 @@ class CliContractTest(unittest.TestCase):
             self.assertTrue((root / "automan.yml").exists())
             self.assertIn("[ OK ]", output.getvalue())
             self.assertIn("tpcc/pg", output.getvalue())
+
+    def test_check_inventory_prints_check_results(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        output = io.StringIO()
+
+        with patch("automan_core.cli.check_task_readiness", return_value=[CheckResult("FAIL", "perf missing"), CheckResult("HINT", "install perf")]):
+            with redirect_stdout(output):
+                failures = cli.check_inventory(repo, repo / "conf" / "tpcc" / "pg.yml")
+
+        text = output.getvalue()
+        self.assertEqual(failures, 1)
+        self.assertIn("[FAIL] perf missing", text)
+        self.assertIn("[HINT] install perf", text)
 
     def test_legacy_run_task_remains_available(self) -> None:
         parser = cli.build_parser()

@@ -20,6 +20,9 @@ class InventoryConfigTest(unittest.TestCase):
         self.assertEqual(task.matrix.load_workers, 32)
         self.assertEqual(task.matrix.run_mins, 15)
         self.assertEqual(len(task.targets), 1)
+        self.assertEqual(task.collectors.system.interval_seconds, 1)
+        self.assertEqual(task.collectors.perf.frequency, 99)
+        self.assertEqual(task.collectors.perf.phases, ["runBenchmark.sh"])
 
         target = task.targets[0]
         self.assertEqual(target.id, "pg")

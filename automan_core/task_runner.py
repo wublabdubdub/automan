@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from automan_core.config import load_yaml
 from automan_core.executor import execute_campaign
-from automan_core.models import ConnectionInfo, Target, TpccMatrix
+from automan_core.models import (
+    CollectorConfig,
+    ConnectionInfo,
+    PerfCollectorConfig,
+    SystemCollectorConfig,
+    Target,
+    TpccMatrix,
+)
 from automan_core.parameter_commands import build_manual_parameter_commands
 from automan_core.plan import build_run_specs, new_campaign_id, write_campaign_files
 from automan_core.profiles import find_profile, load_database_profiles
@@ -17,6 +24,7 @@ class TaskDefinition:
     benchmark: str
     matrix: TpccMatrix
     targets: list[Target]
+    collectors: CollectorConfig = field(default_factory=CollectorConfig)
     campaign_id: str | None = None
     source_path: Path | None = None
     style: str = "legacy"
@@ -67,6 +75,8 @@ def validate_task_definition(task: TaskDefinition) -> list[ValidationMessage]:
         messages.append(ValidationMessage("OK", f"load_workers={task.matrix.load_workers}, run_mins={task.matrix.run_mins}"))
     else:
         messages.append(ValidationMessage("FAIL", "tpcc_load_workers and tpcc_run_mins must be positive"))
+
+    messages.extend(_validate_collectors(task.collectors))
 
     if not task.targets:
         messages.append(ValidationMessage("FAIL", "at least one benchmark target is required"))
@@ -121,11 +131,12 @@ def run_task_campaign(root: Path, task_path: Path, plan_only: bool) -> Path:
         task.matrix,
         runs,
         _merged_mars3_options(task.targets),
+        asdict(task.collectors),
     )
     _print_task_plan(campaign_dir, task.targets, task.matrix, runs)
 
     if not plan_only:
-        execute_campaign(root, campaign_id, task.targets, runs)
+        execute_campaign(root, campaign_id, task.targets, runs, task.collectors)
         print("[ OK ] campaign finished")
         print("[HINT] run ./automan progress to inspect status")
     return campaign_dir
@@ -141,6 +152,7 @@ def _load_legacy_task(root: Path, task_path: Path, raw: dict[str, Any], profiles
         benchmark="tpcc",
         matrix=matrix,
         targets=targets,
+        collectors=_load_collectors(raw.get("collectors"), task_path),
         campaign_id=raw.get("campaign_id"),
         source_path=task_path,
         style="legacy",
@@ -178,6 +190,7 @@ def _load_inventory_task(root: Path, task_path: Path, raw: dict[str, Any], profi
         benchmark=str(all_vars.get("benchmark", "tpcc")),
         matrix=matrix,
         targets=targets,
+        collectors=_load_collectors(all_vars.get("collectors"), task_path),
         campaign_id=all_vars.get("campaign_id"),
         source_path=task_path,
         style="inventory",
@@ -364,12 +377,115 @@ def _mapping(value: Any, name: str) -> dict[str, Any]:
     return value
 
 
+def _load_collectors(value: Any, task_path: Path) -> CollectorConfig:
+    raw = _collector_mapping(value, task_path)
+    if not raw:
+        return CollectorConfig()
+
+    system_raw = dict(raw.get("system", {}) or {})
+    perf_raw = dict(raw.get("perf", {}) or {})
+    system = SystemCollectorConfig(
+        enabled=_bool(system_raw.get("enabled", True)),
+        interval_seconds=int(system_raw.get("interval_seconds", system_raw.get("interval", 1))),
+        host_roles=_str_list(system_raw.get("host_roles", ["database"]), "collectors.system.host_roles"),
+        tools=_str_list(system_raw.get("tools", ["vmstat", "iostat", "pidstat", "mpstat"]), "collectors.system.tools"),
+    )
+    perf = PerfCollectorConfig(
+        enabled=_bool(perf_raw.get("enabled", True)),
+        phases=_str_list(perf_raw.get("phases", ["runBenchmark.sh"]), "collectors.perf.phases"),
+        host_roles=_str_list(perf_raw.get("host_roles", ["database"]), "collectors.perf.host_roles"),
+        frequency=int(perf_raw.get("frequency", perf_raw.get("freq", 99))),
+        call_graph=str(perf_raw.get("call_graph", "fp")),
+        record_scope=str(perf_raw.get("record_scope", "system")),
+    )
+    return CollectorConfig(
+        enabled=_bool(raw.get("enabled", True)),
+        system=system,
+        perf=perf,
+    )
+
+
+def _collector_mapping(value: Any, task_path: Path) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        collector_path = Path(value)
+        if not collector_path.is_absolute():
+            collector_path = task_path.parent / collector_path
+        raw = load_yaml(collector_path)
+        return _collector_mapping(raw.get("collectors", raw), collector_path)
+    if not isinstance(value, dict):
+        raise ValueError("collectors must be a mapping or YAML path")
+    return dict(value.get("collectors", value) or {})
+
+
+def _validate_collectors(collectors: CollectorConfig) -> list[ValidationMessage]:
+    messages: list[ValidationMessage] = []
+    allowed_roles = {"execution", "database"}
+    allowed_call_graph = {"fp", "dwarf", "lbr", "none"}
+    allowed_system_tools = {"vmstat", "iostat", "pidstat", "mpstat"}
+
+    if not collectors.enabled:
+        messages.append(ValidationMessage("HINT", "collectors disabled"))
+        return messages
+
+    if collectors.system.enabled:
+        if collectors.system.interval_seconds > 0:
+            messages.append(ValidationMessage("OK", f"system collectors interval={collectors.system.interval_seconds}s"))
+        else:
+            messages.append(ValidationMessage("FAIL", "collectors.system.interval_seconds must be positive"))
+        messages.extend(_validate_host_roles("collectors.system.host_roles", collectors.system.host_roles, allowed_roles))
+        invalid_tools = [tool for tool in collectors.system.tools if tool not in allowed_system_tools]
+        if invalid_tools:
+            messages.append(ValidationMessage("FAIL", f"collectors.system.tools has unsupported tool(s): {', '.join(invalid_tools)}"))
+        else:
+            messages.append(ValidationMessage("OK", f"collectors.system.tools: {', '.join(collectors.system.tools)}"))
+
+    if collectors.perf.enabled:
+        if collectors.perf.frequency > 0:
+            messages.append(ValidationMessage("OK", f"perf record frequency={collectors.perf.frequency}Hz"))
+        else:
+            messages.append(ValidationMessage("FAIL", "collectors.perf.frequency must be positive"))
+        if collectors.perf.call_graph in allowed_call_graph:
+            messages.append(ValidationMessage("OK", f"perf call_graph={collectors.perf.call_graph}"))
+        else:
+            messages.append(ValidationMessage("FAIL", "collectors.perf.call_graph must be one of: dwarf, fp, lbr, none"))
+        messages.extend(_validate_host_roles("collectors.perf.host_roles", collectors.perf.host_roles, allowed_roles))
+
+    return messages
+
+
+def _validate_host_roles(name: str, roles: list[str], allowed_roles: set[str]) -> list[ValidationMessage]:
+    invalid = [role for role in roles if role not in allowed_roles]
+    if invalid:
+        return [ValidationMessage("FAIL", f"{name} has unsupported role(s): {', '.join(invalid)}")]
+    return [ValidationMessage("OK", f"{name}: {', '.join(roles)}")]
+
+
 def _int_list(value: Any, name: str) -> list[int]:
     if value is None:
         return []
     if not isinstance(value, list):
         raise ValueError(f"{name} must be a list")
     return [int(item) for item in value]
+
+
+def _str_list(value: Any, name: str) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if not isinstance(value, list):
+        raise ValueError(f"{name} must be a list")
+    return [str(item) for item in value]
+
+
+def _bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() not in {"0", "false", "no", "off"}
+    return bool(value)
 
 
 def _first_host(group: dict[str, Any]) -> tuple[str, dict[str, Any]]:

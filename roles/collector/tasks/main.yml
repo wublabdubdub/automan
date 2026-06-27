@@ -1,4 +1,10 @@
 ---
+- name: Explain runtime collector ownership
+  ansible.builtin.debug:
+    msg: "Runtime CPU/memory/IO/perf collection is started and stopped by automan_core.executor per BenchmarkSQL phase; this Ansible role only mirrors campaign status files."
+  tags:
+    - collector
+
 - name: Collect latest campaign status files
   ansible.builtin.shell: |
     set -euo pipefail

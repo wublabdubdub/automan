@@ -220,6 +220,98 @@ DISTRIBUTED MASTERONLY;
             self.assertIn("password authentication failed", progress["last_error"])
             self.assertIn("password authentication failed", progress["targets"][0]["last_error"])
 
+    def test_collectors_wrap_run_benchmark_phase(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, target, run = self._run_fixture(Path(tmp), skip_destroy=True)
+            self._enable_collectors(root)
+            events: list[tuple[str, str]] = []
+            old_prepare = executor._prepare_benchmark_run_dir
+            old_probe = executor._probe_tpcc_objects
+            old_run_local = executor._run_local
+            old_collector_manager = executor.CollectorManager
+
+            class FakeCollectorManager:
+                def __init__(self, root, target, run, config=None):
+                    pass
+
+                def start_phase(self, phase):
+                    events.append(("start", phase))
+
+                def stop_phase(self, phase):
+                    events.append(("stop", phase))
+
+            try:
+                executor._prepare_benchmark_run_dir = lambda root, target, run: None
+                executor._probe_tpcc_objects = lambda target: CommandResult("probe", 0, "0\n", "")
+                executor.CollectorManager = FakeCollectorManager
+
+                def fake_run(command, cwd, timeout, env=None):
+                    events.append(("run", command[0]))
+                    return CommandResult(" ".join(command), 0, "", "")
+
+                executor._run_local = fake_run
+                _execute_run(root, "campaign", target, run)
+            finally:
+                executor._prepare_benchmark_run_dir = old_prepare
+                executor._probe_tpcc_objects = old_probe
+                executor._run_local = old_run_local
+                executor.CollectorManager = old_collector_manager
+
+            self.assertEqual(
+                events,
+                [
+                    ("start", "runDatabaseBuild.sh"),
+                    ("run", "./runDatabaseBuild.sh"),
+                    ("stop", "runDatabaseBuild.sh"),
+                    ("start", "runBenchmark.sh"),
+                    ("run", "./runBenchmark.sh"),
+                    ("stop", "runBenchmark.sh"),
+                ],
+            )
+
+    def test_collector_error_fails_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, target, run = self._run_fixture(Path(tmp), skip_destroy=True)
+            self._enable_collectors(root)
+            old_prepare = executor._prepare_benchmark_run_dir
+            old_probe = executor._probe_tpcc_objects
+            old_run_local = executor._run_local
+            old_collector_manager = executor.CollectorManager
+
+            class FakeCollectorManager:
+                def __init__(self, root, target, run, config=None):
+                    pass
+
+                def start_phase(self, phase):
+                    return None
+
+                def stop_phase(self, phase):
+                    if phase == "runBenchmark.sh":
+                        raise executor.CollectorError("perf export failed")
+
+            try:
+                executor._prepare_benchmark_run_dir = lambda root, target, run: None
+                executor._probe_tpcc_objects = lambda target: CommandResult("probe", 0, "0\n", "")
+                executor.CollectorManager = FakeCollectorManager
+
+                def fake_run(command, cwd, timeout, env=None):
+                    return CommandResult(" ".join(command), 0, "", "")
+
+                executor._run_local = fake_run
+                _execute_run(root, "campaign", target, run)
+            finally:
+                executor._prepare_benchmark_run_dir = old_prepare
+                executor._probe_tpcc_objects = old_probe
+                executor._run_local = old_run_local
+                executor.CollectorManager = old_collector_manager
+
+            status = load_yaml(root / "runs" / run.run_id / "status.json")
+            progress = load_yaml(root / "runs/campaigns/campaign/progress.json")
+            self.assertEqual(status["status"], "failed")
+            self.assertEqual(status["phase"], "runBenchmark.sh")
+            self.assertIn("collector error", status["last_error"])
+            self.assertIn("perf export failed", progress["last_error"])
+
     def test_manual_parameter_commands_are_recorded_but_not_executed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -297,6 +389,19 @@ DISTRIBUTED MASTERONLY;
             },
         )
         return root, target, run
+
+    def _enable_collectors(self, root: Path) -> None:
+        path = root / "configs/collectors/default.yaml"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            """collectors:
+  system:
+    enabled: true
+  perf:
+    enabled: true
+""",
+            encoding="utf-8",
+        )
 
     def _profile(self) -> DatabaseProfile:
         return DatabaseProfile(
