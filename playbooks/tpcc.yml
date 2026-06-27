@@ -1,0 +1,31 @@
+---
+- name: Run Automan TPC-C campaign
+  hosts: "{{ automan_hosts | default('bench') }}"
+  gather_facts: false
+  vars:
+    automan_inventory_sources_safe: "{{ ansible_inventory_sources | default(['automan.yml'], true) }}"
+    automan_config_file: "{{ automan_config | default(automan_inventory_sources_safe[0], true) }}"
+    automan_root: "{{ automan_workdir | default('/root/automan', true) }}"
+    automan_python: "{{ python_bin | default('python3', true) }}"
+    benchmarksql_dir: "{{ automan_root }}/tools/benchmarksql"
+  roles:
+    - role: bench_tool
+      tags:
+        - check
+        - bench_tool
+    - role: db_check
+      tags:
+        - check
+        - db_check
+    - role: tpcc_prepare
+      tags:
+        - tpcc_prepare
+    - role: tpcc_run
+      tags:
+        - tpcc_run
+    - role: collector
+      tags:
+        - collector
+    - role: archive
+      tags:
+        - archive

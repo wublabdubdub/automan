@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+import sys
+
+from automan_core.cli import main
+
+
+if __name__ == "__main__":
+    sys.argv = [sys.argv[0], "progress", *sys.argv[1:]]
+    main()

@@ -1,6 +1,10 @@
 * text=auto
 
+.gitattributes text eol=lf
 automan text eol=lf
+configure text eol=lf
+bin/* text eol=lf
+ansible.cfg text eol=lf
 *.py text eol=lf
 *.sh text eol=lf
 *.yaml text eol=lf
@@ -9,4 +13,3 @@ automan text eol=lf
 *.template text eol=lf
 *.md text eol=lf
 *.txt text eol=lf
-

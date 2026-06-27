@@ -1,0 +1,51 @@
+# YMatrix heap TPC-C template.
+# Copy with: ./configure -c tpcc/ymatrix-heap -o automan.yml
+all:
+  vars:
+    benchmark: tpcc
+    campaign_id:
+
+  children:
+    bench:
+      hosts:
+        bench01:
+          ansible_host: 172.16.100.143
+          ansible_port: 22
+          ansible_user: root
+          ansible_password: ""
+          automan_workdir: /root/automan
+
+    ymatrix_heap:
+      vars:
+        db_type: ymatrix
+        storage_engine: heap
+        test_mode: master_only
+
+        tpcc_warehouses: [100, 1000]
+        tpcc_terminals: [100, 500, 1000]
+        tpcc_load_workers: 32
+        tpcc_run_mins: 60
+
+        db_host: 172.16.100.29
+        db_port: 5432
+        db_name: postgres
+        db_user: zhangchen
+        db_password: ""
+
+        # Used only for generated gpconfig/mxstop commands.
+        config_host: 172.16.100.29
+        config_port: 22
+        config_user: zhangchen
+        config_password: ""
+        config_workdir: /home/zhangchen/automan
+        gpconfig_command: gpconfig
+        restart_command: mxstop -afr
+
+        host_facts:
+          cpu_threads: 64
+          memory_gb: 251
+
+        database_parameters:
+          max_connections: "1050"
+
+        manual_parameter_commands: []

@@ -1,0 +1,106 @@
+# PostgreSQL vs YMatrix TPC-C comparison template.
+# All target groups share the same TPC-C matrix in this transition phase.
+all:
+  vars:
+    benchmark: tpcc
+    campaign_id:
+
+  children:
+    bench:
+      hosts:
+        bench01:
+          ansible_host: 172.16.100.143
+          ansible_port: 22
+          ansible_user: root
+          ansible_password: ""
+          automan_workdir: /root/automan
+
+    pg:
+      vars:
+        db_type: postgresql
+        storage_engine: heap
+        test_mode: single_node
+        tpcc_warehouses: [100]
+        tpcc_terminals: [100, 500]
+        tpcc_load_workers: 32
+        tpcc_run_mins: 15
+        db_host: 192.168.100.29
+        db_port: 5232
+        db_name: postgres
+        db_user: zhangchen
+        db_password: ""
+        config_host: 192.168.100.29
+        config_user: 12pg
+        config_workdir: /home/12pg/automan
+        postgresql_conf: /home/12pg/data/postgresql.conf
+        restart_command: pg_ctl restart -D /home/12pg/data
+        host_facts:
+          cpu_threads: 64
+          memory_gb: 251
+        database_parameters:
+          max_connections: "550"
+          shared_buffers: 62GB
+          effective_cache_size: 175GB
+          work_mem: 116MB
+          maintenance_work_mem: 12GB
+          checkpoint_timeout: 30min
+          max_wal_size: 64GB
+        manual_parameter_commands: []
+
+    ymatrix_heap:
+      vars:
+        db_type: ymatrix
+        storage_engine: heap
+        test_mode: master_only
+        tpcc_warehouses: [100]
+        tpcc_terminals: [100, 500]
+        tpcc_load_workers: 32
+        tpcc_run_mins: 15
+        db_host: 172.16.100.29
+        db_port: 5432
+        db_name: postgres
+        db_user: zhangchen
+        db_password: ""
+        config_host: 172.16.100.29
+        config_user: zhangchen
+        config_workdir: /home/zhangchen/automan
+        gpconfig_command: gpconfig
+        restart_command: mxstop -afr
+        host_facts:
+          cpu_threads: 64
+          memory_gb: 251
+        database_parameters:
+          max_connections: "550"
+        manual_parameter_commands: []
+
+    ymatrix_mars3:
+      vars:
+        db_type: ymatrix
+        storage_engine: mars3
+        test_mode: master_only
+        tpcc_warehouses: [100]
+        tpcc_terminals: [100, 500]
+        tpcc_load_workers: 32
+        tpcc_run_mins: 15
+        db_host: 172.16.100.29
+        db_port: 5432
+        db_name: postgres
+        db_user: zhangchen
+        db_password: ""
+        config_host: 172.16.100.29
+        config_user: zhangchen
+        config_workdir: /home/zhangchen/automan
+        gpconfig_command: gpconfig
+        restart_command: mxstop -afr
+        host_facts:
+          cpu_threads: 64
+          memory_gb: 251
+        database_parameters:
+          max_connections: "550"
+        mars3_options:
+          prefer_load_mode: single
+          rowstore_size: 64
+          compresstype: zstd
+          compresslevel: 1
+          compress_threshold: 1200
+        manual_parameter_commands: []

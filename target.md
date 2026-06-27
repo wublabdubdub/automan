@@ -94,6 +94,9 @@ user: root
 当前阶段先固化两项工程契约：
 
 ```text
+conf/
+  Pigsty 风格用户配置模板。TPC-C 当前使用 conf/tpcc/*.yml。
+
 configs/databases/
   数据库模板，当前包含 Ymatrix 与 Doris。
 
@@ -113,8 +116,22 @@ docs/runs-structure.md
   每次测试运行的 runs/ 结果目录结构，定义归档文件、指标、日志和报告上下文的位置。
 
 docs/tpcc-automan-flow.md
-  当前 TPC-C-only 阶段的 task.yaml 模板、automan run --task 和 automan progress 执行流程。
+  当前 TPC-C-only 阶段的 Pigsty 风格 conf 模板、root playbook、manual parameter commands 和 automan progress 执行流程。
 ```
+
+TPC-C 当前推荐入口：
+
+```bash
+./configure -c tpcc/pg -o automan.yml
+./bin/validate -i automan.yml
+./automan param -i automan.yml
+./check.yml -i automan.yml
+./tpcc.yml -i automan.yml
+./automan progress
+./report.yml -i automan.yml
+```
+
+数据库参数修改只生成命令，不由程序自动执行。
 
 ## 执行位置约束
 

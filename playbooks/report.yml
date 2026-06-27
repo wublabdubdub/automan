@@ -1,0 +1,19 @@
+---
+- name: Build Automan report artifacts
+  hosts: "{{ automan_hosts | default('bench') }}"
+  gather_facts: false
+  vars:
+    automan_inventory_sources_safe: "{{ ansible_inventory_sources | default(['automan.yml'], true) }}"
+    automan_config_file: "{{ automan_config | default(automan_inventory_sources_safe[0], true) }}"
+    automan_root: "{{ automan_workdir | default('/root/automan', true) }}"
+    automan_python: "{{ python_bin | default('python3', true) }}"
+  roles:
+    - role: collector
+      tags:
+        - collector
+    - role: report
+      tags:
+        - report
+    - role: archive
+      tags:
+        - archive

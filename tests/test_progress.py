@@ -17,6 +17,7 @@ class ProgressTest(unittest.TestCase):
             "running_runs": 0,
             "pending_runs": 2,
             "failed_runs": 0,
+            "last_error": "campaign level failure",
             "targets": [
                 {
                     "target_id": "postgresql_heap_single_node",
@@ -36,6 +37,7 @@ class ProgressTest(unittest.TestCase):
             _print_progress(progress)
 
         self.assertIn("manual_parameter_review", out.getvalue())
+        self.assertIn("campaign level failure", out.getvalue())
         self.assertIn("sudo requires a password", out.getvalue())
 
 

@@ -163,6 +163,63 @@ DISTRIBUTED MASTERONLY;
 
             self.assertEqual(commands, ["./runDatabaseDestroy.sh", "./runDatabaseBuild.sh", "./runBenchmark.sh"])
 
+    def test_benchmark_parent_dir_exists_before_run_benchmark(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, target, run = self._run_fixture(Path(tmp), skip_destroy=True)
+            old_prepare = executor._prepare_benchmark_run_dir
+            old_probe = executor._probe_tpcc_objects
+            old_run_local = executor._run_local
+            try:
+                executor._prepare_benchmark_run_dir = lambda root, target, run: None
+                executor._probe_tpcc_objects = lambda target: CommandResult("probe", 0, "0\n", "")
+
+                def fake_run(command, cwd, timeout, env=None):
+                    if command[0] == "./runBenchmark.sh":
+                        self.assertTrue((root / "runs" / run.run_id / "benchmark").is_dir())
+                    return CommandResult(" ".join(command), 0, "", "")
+
+                executor._run_local = fake_run
+                _execute_run(root, "campaign", target, run)
+            finally:
+                executor._prepare_benchmark_run_dir = old_prepare
+                executor._probe_tpcc_objects = old_probe
+                executor._run_local = old_run_local
+
+    def test_zero_exit_with_fatal_benchmarksql_output_fails_and_records_last_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, target, run = self._run_fixture(Path(tmp), skip_destroy=True)
+            old_prepare = executor._prepare_benchmark_run_dir
+            old_probe = executor._probe_tpcc_objects
+            old_run_local = executor._run_local
+            try:
+                executor._prepare_benchmark_run_dir = lambda root, target, run: None
+                executor._probe_tpcc_objects = lambda target: CommandResult("probe", 0, "0\n", "")
+
+                def fake_run(command, cwd, timeout, env=None):
+                    if command[0] == "./runBenchmark.sh":
+                        return CommandResult(
+                            " ".join(command),
+                            0,
+                            "processing...\nERROR: password authentication failed for user postgres\n",
+                            "",
+                        )
+                    return CommandResult(" ".join(command), 0, "", "")
+
+                executor._run_local = fake_run
+                _execute_run(root, "campaign", target, run)
+            finally:
+                executor._prepare_benchmark_run_dir = old_prepare
+                executor._probe_tpcc_objects = old_probe
+                executor._run_local = old_run_local
+
+            status = load_yaml(root / "runs" / run.run_id / "status.json")
+            progress = load_yaml(root / "runs/campaigns/campaign/progress.json")
+            self.assertEqual(status["status"], "failed")
+            self.assertEqual(status["phase"], "runBenchmark.sh")
+            self.assertIn("password authentication failed", status["last_error"])
+            self.assertIn("password authentication failed", progress["last_error"])
+            self.assertIn("password authentication failed", progress["targets"][0]["last_error"])
+
     def test_manual_parameter_commands_are_recorded_but_not_executed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+from automan_core.cli import configure_main
+
+
+if __name__ == "__main__":
+    configure_main()

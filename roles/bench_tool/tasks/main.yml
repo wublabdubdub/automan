@@ -1,0 +1,105 @@
+---
+- name: Check automan root directory
+  ansible.builtin.stat:
+    path: "{{ automan_root }}"
+  register: automan_root_stat
+  tags:
+    - check
+    - bench_tool
+
+- name: Require automan root directory
+  ansible.builtin.assert:
+    that:
+      - automan_root_stat.stat.isdir | default(false)
+    fail_msg: "automan root {{ automan_root }} does not exist on the benchmark host."
+  tags:
+    - check
+    - bench_tool
+
+- name: Check Python CLI is importable
+  ansible.builtin.command:
+    argv:
+      - "{{ automan_python }}"
+      - -m
+      - automan_core
+      - --help
+  args:
+    chdir: "{{ automan_root }}"
+  changed_when: false
+  tags:
+    - check
+    - bench_tool
+
+- name: Check Java runtime
+  ansible.builtin.command:
+    argv:
+      - java
+      - -version
+  changed_when: false
+  tags:
+    - check
+    - bench_tool
+
+- name: Check psql client
+  ansible.builtin.command:
+    argv:
+      - psql
+      - --version
+  changed_when: false
+  tags:
+    - check
+    - bench_tool
+
+- name: Check BenchmarkSQL run scripts
+  ansible.builtin.stat:
+    path: "{{ benchmarksql_dir }}/run/{{ item }}"
+  loop:
+    - runDatabaseDestroy.sh
+    - runDatabaseBuild.sh
+    - runBenchmark.sh
+  register: benchmarksql_scripts
+  tags:
+    - check
+    - bench_tool
+
+- name: Require BenchmarkSQL run scripts
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "missing BenchmarkSQL script {{ item.item }} under {{ benchmarksql_dir }}/run."
+  loop: "{{ benchmarksql_scripts.results }}"
+  tags:
+    - check
+    - bench_tool
+
+- name: Check BenchmarkSQL dist jar
+  ansible.builtin.find:
+    paths: "{{ benchmarksql_dir }}/dist"
+    patterns: "BenchmarkSQL-*.jar"
+    file_type: file
+  register: benchmarksql_dist
+  tags:
+    - check
+    - bench_tool
+
+- name: Require BenchmarkSQL dist jar
+  ansible.builtin.assert:
+    that:
+      - benchmarksql_dist.matched | int > 0
+    fail_msg: "BenchmarkSQL dist jar is missing. Build it before running TPC-C."
+  tags:
+    - check
+    - bench_tool
+
+- name: Ensure automan work directories exist
+  ansible.builtin.file:
+    path: "{{ automan_root }}/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - work
+    - runs
+    - runs/campaigns
+  tags:
+    - check
+    - bench_tool

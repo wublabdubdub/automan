@@ -70,6 +70,7 @@ def write_campaign_files(
 ) -> Path:
     campaign_dir = root / "runs" / "campaigns" / campaign_id
     campaign_dir.mkdir(parents=True, exist_ok=True)
+    manual_parameter_commands_path = campaign_dir / "manual-parameter-commands.sh"
 
     target_map = {target.id: target for target in targets}
     plan = {
@@ -89,6 +90,7 @@ def write_campaign_files(
                 "apply_params": False,
                 "parameter_application": "manual_only",
                 "manual_parameter_commands": target.manual_parameter_commands,
+                "manual_parameter_commands_path": str(manual_parameter_commands_path),
                 "mars3_options": target.mars3_options,
                 "ddl_profile": target.profile.ddl_profile,
                 "ddl_dir": target.profile.ddl_dir,
@@ -115,10 +117,27 @@ def write_campaign_files(
                 "properties_path": str(run.properties_path),
                 "work_dir": str(run.work_dir),
                 "benchmark_run_dir": str(run.benchmark_run_dir),
+                "run_dir": str(root / "runs" / run.run_id),
+                "resolved_task_path": str(root / "runs" / run.run_id / "resolved-task.yaml"),
+                "status_path": str(root / "runs" / run.run_id / "status.json"),
+                "command_log_dir": str(root / "runs" / run.run_id / "logs"),
+                "benchmark_parent_dir": str(root / "runs" / run.run_id / "benchmark"),
+                "benchmark_result_dir": str(root / "runs" / run.run_id / "benchmark" / "result"),
                 "skip_destroy": run.skip_destroy,
             }
             for run in runs
         ],
+        "archive": {
+            "campaign_dir": str(campaign_dir),
+            "campaign_yaml": str(campaign_dir / "campaign.yaml"),
+            "resolved_plan": str(campaign_dir / "resolved-plan.yaml"),
+            "progress": str(campaign_dir / "progress.json"),
+            "status": str(campaign_dir / "status.json"),
+            "timeline": str(campaign_dir / "timeline.jsonl"),
+            "manual_parameter_commands_path": str(manual_parameter_commands_path),
+            "report_dir": str(campaign_dir / "report"),
+            "report_markdown": str(campaign_dir / "report" / "report.md"),
+        },
         "scheduling": {
             "different_hosts": "parallel",
             "same_host": "serial_by_selection_order",
@@ -132,7 +151,7 @@ def write_campaign_files(
     }
     write_yaml(campaign_dir / "campaign.yaml", plan)
     write_yaml(campaign_dir / "resolved-plan.yaml", plan)
-    _write_manual_parameter_commands(campaign_dir, targets)
+    _write_manual_parameter_commands(manual_parameter_commands_path, targets)
 
     progress = {
         "campaign_id": campaign_id,
@@ -143,6 +162,7 @@ def write_campaign_files(
         "running_runs": 0,
         "failed_runs": 0,
         "pending_runs": len(runs),
+        "last_error": None,
         "targets": [
             {
                 "target_id": target.id,
@@ -154,6 +174,7 @@ def write_campaign_files(
                 "current_phase": None,
                 "finished_runs": 0,
                 "total_runs": sum(1 for run in runs if run.target_id == target.id),
+                "last_error": None,
             }
             for target in targets
         ],
@@ -181,6 +202,12 @@ def write_campaign_files(
                 "benchmarksql_properties": str(run.properties_path),
                 "work_dir": str(run.work_dir),
                 "benchmark_run_dir": str(run.benchmark_run_dir),
+                "manual_parameter_commands_path": str(manual_parameter_commands_path),
+                "run_dir": str(run_dir),
+                "status_path": str(run_dir / "status.json"),
+                "command_log_dir": str(run_dir / "logs"),
+                "benchmark_parent_dir": str(run_dir / "benchmark"),
+                "benchmark_result_dir": str(run_dir / "benchmark" / "result"),
                 "skip_destroy": run.skip_destroy,
                 "command_sequence": [
                     *(["schema_probe", "runDatabaseDestroy.sh when bmsql_* exists"] if run.skip_destroy else ["runDatabaseDestroy.sh"]),
@@ -193,7 +220,7 @@ def write_campaign_files(
     return campaign_dir
 
 
-def _write_manual_parameter_commands(campaign_dir: Path, targets: list[Target]) -> None:
+def _write_manual_parameter_commands(path: Path, targets: list[Target]) -> None:
     lines = [
         "#!/usr/bin/env bash",
         "set -euo pipefail",
@@ -209,5 +236,4 @@ def _write_manual_parameter_commands(campaign_dir: Path, targets: list[Target]) 
         else:
             lines.extend(target.manual_parameter_commands)
         lines.append("")
-    path = campaign_dir / "manual-parameter-commands.sh"
     path.write_text("\n".join(lines), encoding="utf-8")

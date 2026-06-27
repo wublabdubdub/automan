@@ -1,0 +1,31 @@
+---
+- name: Collect latest campaign status files
+  ansible.builtin.shell: |
+    set -euo pipefail
+    mkdir -p runs/collector
+    latest="$(ls -1dt runs/campaigns/* 2>/dev/null | head -n 1 || true)"
+    if [ -z "$latest" ]; then
+      echo "no campaigns found"
+      exit 0
+    fi
+    dest="runs/collector/$(basename "$latest")"
+    mkdir -p "$dest"
+    for file in progress.json status.json campaign.yaml resolved-plan.yaml timeline.jsonl; do
+      if [ -f "$latest/$file" ]; then
+        cp -f "$latest/$file" "$dest/$file"
+      fi
+    done
+    echo "$dest"
+  args:
+    chdir: "{{ automan_root }}"
+    executable: /bin/bash
+  register: collector_result
+  changed_when: "'runs/collector/' in collector_result.stdout"
+  tags:
+    - collector
+
+- name: Show collector destination
+  ansible.builtin.debug:
+    msg: "{{ collector_result.stdout }}"
+  tags:
+    - collector

@@ -88,12 +88,17 @@ class ProfileAndPlanTest(unittest.TestCase):
             self.assertIn("destroy_policy: schema_probe_then_destroy_if_needed", plan)
             self.assertIn("skip_destroy: true", plan)
             self.assertIn("parameter_application: manual_only", plan)
+            self.assertIn("manual_parameter_commands_path:", plan)
+            self.assertIn("benchmark_result_dir:", plan)
             progress = (campaign_dir / "progress.json").read_text(encoding="utf-8")
             self.assertIn('"execution_host": "172.16.100.143"', progress)
             self.assertIn('"config_host": "127.0.0.1"', progress)
             self.assertIn('"database_host": "127.0.0.1"', progress)
             properties = runs[0].properties_path.read_text(encoding="utf-8")
             self.assertIn("password=db-secret", properties)
+            resolved_task = (root / "runs" / runs[0].run_id / "resolved-task.yaml").read_text(encoding="utf-8")
+            self.assertIn("manual_parameter_commands_path:", resolved_task)
+            self.assertIn("benchmark_result_dir:", resolved_task)
 
 
 if __name__ == "__main__":

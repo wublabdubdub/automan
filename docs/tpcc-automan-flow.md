@@ -16,7 +16,13 @@ Run from the remote path:
 
 ```bash
 cd /root/automan
-./automan run --task configs/tasks/tpcc-postgresql-template.yaml
+./configure -c tpcc/pg -o automan.yml
+./bin/validate -i automan.yml
+./automan param -i automan.yml
+./check.yml -i automan.yml
+./tpcc.yml -i automan.yml
+./automan progress
+./report.yml -i automan.yml
 ```
 
 The execution host must provide:
@@ -37,22 +43,32 @@ python -m automan_core tools build-benchmarksql --host 172.16.100.143 --user roo
 
 The command runs `ant` on the Linux execution host and downloads the generated `tools/benchmarksql/dist/` back to the source workspace. Sync the project to `/root/automan` again after this step.
 
-## Task Template
+## Inventory Template
 
-`automan run` no longer asks for interactive database parameters. Every campaign must be started from a task YAML:
+`automan` no longer asks for interactive database parameters. The preferred contract is a Pigsty-style inventory under `conf/`:
 
 ```bash
-./automan run --task <task.yaml>
+./configure -c tpcc/pg -o automan.yml
+./automan run -i automan.yml --plan-only
+./automan run -i automan.yml
 ```
 
 Current templates:
 
 ```text
-configs/tasks/tpcc-postgresql-template.yaml
-configs/tasks/tpcc-ymatrix-template.yaml
+conf/tpcc/pg.yml
+conf/tpcc/ymatrix-heap.yml
+conf/tpcc/ymatrix-mars3.yml
+conf/tpcc/pg-vs-ymatrix.yml
 ```
 
-Each task YAML declares:
+Legacy task YAML remains available during migration:
+
+```bash
+./automan run --task configs/tasks/tpcc-postgresql-template.yaml --plan-only
+```
+
+Each inventory declares:
 
 ```text
 execution host
@@ -65,7 +81,7 @@ optional manual parameter commands
 MARS3 DDL options when needed
 ```
 
-Every template field carries an inline YAML comment. Parameters such as `max_connections`, `shared_buffers`, `gpconfig_command`, `restart_command`, and MARS3 options must be reviewed in the template before execution.
+Every template field carries an inline YAML comment. Parameters such as `max_connections`, `shared_buffers`, `gpconfig_command`, `restart_command`, and MARS3 options must be reviewed in `conf/tpcc/*.yml` before execution.
 
 ## Database Profiles
 
@@ -79,7 +95,7 @@ ymatrix_mars3_master_only
 
 ## Manual Parameter Commands
 
-`automan` does not modify database parameters, does not run `gpconfig`, does not edit `postgresql.conf`, and does not restart databases.
+`automan` and its Ansible playbooks do not modify database parameters, do not run `gpconfig`, do not edit `postgresql.conf`, and do not restart databases.
 
 For each campaign it writes:
 
@@ -87,7 +103,7 @@ For each campaign it writes:
 runs/campaigns/<campaign_id>/manual-parameter-commands.sh
 ```
 
-This file is generated from `database_parameters` unless `manual_parameter_commands` is explicitly set in the task YAML.
+This file is generated from `database_parameters` unless `manual_parameter_commands` is explicitly set in the inventory.
 
 PostgreSQL commands include:
 
@@ -106,17 +122,17 @@ the declared restart command, usually mxstop -afr
 show each changed parameter
 ```
 
-The user must execute and verify these commands manually before starting the actual pressure test, or run `--plan-only` first, apply the commands, and then run the task normally.
+The user must execute and verify these commands manually before starting the actual pressure test. `./automan param -i automan.yml` creates a pre-review campaign for these commands; the later `./tpcc.yml -i automan.yml` run creates the real benchmark campaign.
 
 ## Execution Boundary
 
-`automan` only performs the actual TPC-C pressure test. It uses the database connection in the task YAML to run BenchmarkSQL and schema probes. It does not SSH to the config host during benchmark execution.
+`automan` only performs the actual TPC-C pressure test. It uses the database connection in the inventory to run BenchmarkSQL and schema probes. It does not SSH to the config host during benchmark execution.
 
 `automan run` must be started on the configured execution host; the runner checks local host markers before doing destructive work.
 
 ## TPC-C Matrix
 
-The task YAML defines:
+The inventory defines:
 
 ```text
 warehouses: multi-value
@@ -137,7 +153,7 @@ Example:
 
 ## MARS3 DDL Options
 
-If a YMatrix mars3 target is declared, the task YAML sets:
+If a YMatrix mars3 target is declared, the inventory sets:
 
 ```text
 prefer_load_mode [single]

@@ -1,0 +1,34 @@
+---
+- name: Ensure run parent directories exist
+  ansible.builtin.file:
+    path: "{{ automan_root }}/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - runs
+    - runs/campaigns
+    - work/tpcc
+  tags:
+    - tpcc_prepare
+
+- name: Validate TPC-C inventory before run
+  ansible.builtin.command:
+    argv:
+      - "{{ automan_python }}"
+      - -m
+      - automan_core
+      - validate
+      - -i
+      - "{{ automan_config_file }}"
+  args:
+    chdir: "{{ automan_root }}"
+  register: tpcc_prepare_result
+  changed_when: false
+  tags:
+    - tpcc_prepare
+
+- name: Remind that database parameter changes are manual only
+  ansible.builtin.debug:
+    msg: "Automan generated manual parameter commands only; this playbook never applies database parameter changes."
+  tags:
+    - tpcc_prepare

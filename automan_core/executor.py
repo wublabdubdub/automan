@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -12,6 +13,15 @@ from pathlib import Path
 from automan_core.config import load_yaml, write_json
 from automan_core.models import RunSpec, Target
 from automan_core.ssh import CommandResult
+
+
+FATAL_OUTPUT_PATTERNS = (
+    re.compile(r"FATAL:"),
+    re.compile(r"ERROR:"),
+    re.compile(r"Exception"),
+    re.compile(r"Failed to"),
+    re.compile(r"password authentication failed", re.IGNORECASE),
+)
 
 
 def execute_campaign(root: Path, campaign_id: str, targets: list[Target], runs: list[RunSpec]) -> None:
@@ -77,6 +87,8 @@ def _execute_run(root: Path, campaign_id: str, target: Target, run: RunSpec) -> 
     run_dir = root / "runs" / run.run_id
     campaign_dir = root / "runs" / "campaigns" / campaign_id
     run_dir.mkdir(parents=True, exist_ok=True)
+    benchmark_parent_dir = run_dir / "benchmark"
+    benchmark_parent_dir.mkdir(parents=True, exist_ok=True)
     _set_run_status(run_dir, "running", "prepare")
     _update_progress(campaign_dir, run.target_id, "running", run.run_id, "prepare")
 
@@ -92,8 +104,9 @@ def _execute_run(root: Path, campaign_id: str, target: Target, run: RunSpec) -> 
         _write_command_result(run_dir, "schema_probe", probe)
         _append_timeline(campaign_dir, {"event": "schema_probe", "run_id": run.run_id, "target": run.target_id, "exit_code": probe.exit_code, "stdout": probe.stdout, "stderr": probe.stderr})
         if probe.exit_code != 0:
-            _set_run_status(run_dir, "failed", "schema_probe")
-            _mark_run_finished(campaign_dir, run.target_id, failed=True)
+            last_error = _command_error_summary(probe)
+            _set_run_status(run_dir, "failed", "schema_probe", last_error)
+            _mark_run_finished(campaign_dir, run.target_id, failed=True, last_error=last_error)
             return
         should_destroy = _tpcc_objects_exist(probe)
 
@@ -107,9 +120,10 @@ def _execute_run(root: Path, campaign_id: str, target: Target, run: RunSpec) -> 
         result = _run_local(command, cwd=run.benchmark_run_dir, timeout=10800)
         _write_command_result(run_dir, phase, result)
         _append_timeline(campaign_dir, {"event": "phase_done", "run_id": run.run_id, "target": run.target_id, "phase": phase, "exit_code": result.exit_code})
-        if result.exit_code != 0:
-            _set_run_status(run_dir, "failed", phase)
-            _mark_run_finished(campaign_dir, run.target_id, failed=True)
+        phase_error = _phase_failure(result)
+        if phase_error:
+            _set_run_status(run_dir, "failed", phase, phase_error)
+            _mark_run_finished(campaign_dir, run.target_id, failed=True, last_error=phase_error)
             return
 
     _set_run_status(run_dir, "success", "report")
@@ -289,6 +303,37 @@ def _run_local(command: list[str], cwd: Path, timeout: int, env: dict[str, str] 
         )
 
 
+def _phase_failure(result: CommandResult) -> str | None:
+    if result.exit_code != 0:
+        return _command_error_summary(result)
+    fatal_line = _fatal_output_line(result)
+    if fatal_line:
+        return f"{result.command}: {fatal_line}"
+    return None
+
+
+def _fatal_output_line(result: CommandResult) -> str | None:
+    for line in (result.stdout + "\n" + result.stderr).splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if any(pattern.search(stripped) for pattern in FATAL_OUTPUT_PATTERNS):
+            return stripped
+    return None
+
+
+def _command_error_summary(result: CommandResult) -> str:
+    fatal_line = _fatal_output_line(result)
+    if fatal_line:
+        return f"{result.command}: {fatal_line}"
+    for text in (result.stderr, result.stdout):
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped:
+                return f"{result.command}: {stripped}"
+    return f"{result.command}: exit code {result.exit_code}"
+
+
 def _set_campaign_status(campaign_dir: Path, status: str) -> None:
     data = load_yaml(campaign_dir / "status.json") if (campaign_dir / "status.json").exists() else {}
     data["status"] = status
@@ -301,8 +346,11 @@ def _set_campaign_status(campaign_dir: Path, status: str) -> None:
         write_json(progress_path, progress)
 
 
-def _set_run_status(run_dir: Path, status: str, phase: str | None) -> None:
-    write_json(run_dir / "status.json", {"run_id": run_dir.name, "status": status, "phase": phase, "updated_at": datetime.now().isoformat()})
+def _set_run_status(run_dir: Path, status: str, phase: str | None, last_error: str | None = None) -> None:
+    data = {"run_id": run_dir.name, "status": status, "phase": phase, "updated_at": datetime.now().isoformat()}
+    if last_error:
+        data["last_error"] = last_error
+    write_json(run_dir / "status.json", data)
 
 
 def _update_progress(campaign_dir: Path, target_id: str, status: str, current_run: str | None, current_phase: str | None) -> None:
@@ -316,17 +364,21 @@ def _update_progress(campaign_dir: Path, target_id: str, status: str, current_ru
     write_json(campaign_dir / "progress.json", progress)
 
 
-def _mark_run_finished(campaign_dir: Path, target_id: str, failed: bool) -> None:
+def _mark_run_finished(campaign_dir: Path, target_id: str, failed: bool, last_error: str | None = None) -> None:
     progress = load_yaml(campaign_dir / "progress.json")
     progress["finished_runs"] = int(progress.get("finished_runs", 0)) + 1
     progress["failed_runs"] = int(progress.get("failed_runs", 0)) + (1 if failed else 0)
     progress["success_runs"] = int(progress.get("success_runs", 0)) + (0 if failed else 1)
     progress["pending_runs"] = max(0, int(progress.get("pending_runs", 0)) - 1)
+    if last_error:
+        progress["last_error"] = last_error
     for target in progress["targets"]:
         if target["target_id"] == target_id:
             target["finished_runs"] = int(target.get("finished_runs", 0)) + 1
             if failed:
                 target["status"] = "failed"
+                if last_error:
+                    target["last_error"] = last_error
             elif int(target.get("finished_runs", 0)) >= int(target.get("total_runs", 0)):
                 target["status"] = "success"
             else:

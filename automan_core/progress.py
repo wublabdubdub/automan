@@ -38,6 +38,8 @@ def _print_progress(progress: dict) -> None:
         f"{progress.get('pending_runs', 0)} pending, "
         f"{progress.get('failed_runs', 0)} failed"
     )
+    if progress.get("last_error"):
+        print(f"Last error: {progress['last_error']}")
     print()
     print(f"{'TARGET':32} {'DB HOST':18} {'CURRENT RUN':38} {'PHASE':24} {'DONE'}")
     for target in progress.get("targets", []):

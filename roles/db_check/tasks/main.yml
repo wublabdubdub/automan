@@ -1,0 +1,16 @@
+---
+- name: Validate inventory and check database connectivity
+  ansible.builtin.command:
+    argv:
+      - "{{ automan_python }}"
+      - -m
+      - automan_core
+      - check
+      - -i
+      - "{{ automan_config_file }}"
+  args:
+    chdir: "{{ automan_root }}"
+  changed_when: false
+  tags:
+    - check
+    - db_check

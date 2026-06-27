@@ -1,0 +1,22 @@
+---
+- name: Run TPC-C campaign through automan CLI
+  ansible.builtin.command:
+    argv:
+      - "{{ automan_python }}"
+      - -m
+      - automan_core
+      - run
+      - -i
+      - "{{ automan_config_file }}"
+  args:
+    chdir: "{{ automan_root }}"
+  register: tpcc_run_result
+  tags:
+    - tpcc_run
+
+- name: Show TPC-C run output
+  ansible.builtin.debug:
+    var: tpcc_run_result.stdout_lines
+  when: tpcc_run_result.stdout_lines is defined
+  tags:
+    - tpcc_run
