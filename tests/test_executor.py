@@ -224,6 +224,32 @@ DISTRIBUTED MASTERONLY;
             self.assertIn("password authentication failed", progress["last_error"])
             self.assertIn("password authentication failed", progress["targets"][0]["last_error"])
 
+    def test_zero_exit_with_benchmarksql_error_log_level_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, target, run = self._run_fixture(Path(tmp), skip_destroy=True)
+            old_prepare = executor._prepare_benchmark_run_dir
+            old_probe = executor._probe_tpcc_objects
+            old_run_local = executor._run_local
+            try:
+                executor._prepare_benchmark_run_dir = lambda root, target, run: None
+                executor._probe_tpcc_objects = lambda target: CommandResult("probe", 0, "0\n", "")
+
+                def fake_run(command, cwd, timeout, env=None):
+                    if command[0] == "./runBenchmark.sh":
+                        return CommandResult(" ".join(command), 0, "15:34:48,485 [main] ERROR  jTPCC : Term-00, Invalid number of terminals!\n", "")
+                    return CommandResult(" ".join(command), 0, "", "")
+
+                executor._run_local = fake_run
+                _execute_run(root, "campaign", target, run)
+            finally:
+                executor._prepare_benchmark_run_dir = old_prepare
+                executor._probe_tpcc_objects = old_probe
+                executor._run_local = old_run_local
+
+            status = load_yaml(root / "runs" / run.run_id / "status.json")
+            self.assertEqual(status["status"], "failed")
+            self.assertIn("Invalid number of terminals", status["last_error"])
+
     def test_collectors_wrap_run_benchmark_phase(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root, target, run = self._run_fixture(Path(tmp), skip_destroy=True)

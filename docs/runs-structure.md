@@ -195,7 +195,7 @@ v0.1 uses `perf stat` as the default:
 - `perf-stat.txt`: raw perf output.
 - `perf-stat.json`: parsed perf counters used by reports.
 
-Future versions may add `perf record`, folded stacks, and flame graph files.
+Current perf collection is based on `perf record`, with `perf script` and `perf report` outputs for downstream analysis.
 
 ## logs/
 
@@ -215,4 +215,3 @@ The report should be reproducible from the files in the run directory.
 ## Retention Rule
 
 Run directories should be treated as immutable after completion. If a report is regenerated, write a new report file or record the regeneration event in `timeline.jsonl`.
-

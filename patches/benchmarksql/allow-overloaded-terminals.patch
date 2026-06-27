@@ -1,0 +1,23 @@
+diff --git a/src/client/jTPCC.java b/src/client/jTPCC.java
+index fe87cb4..3666f55 100644
+--- a/src/client/jTPCC.java
++++ b/src/client/jTPCC.java
+@@ -109,6 +109,7 @@ public class jTPCC implements jTPCCConfig
+ 	};
+ 	String  limPerMin           = getProp(ini,"limitTxnsPerMin");
+ 	String  iTermWhseFixed      = getProp(ini,"terminalWarehouseFixed");
++	String  iAllowOverloadedTerminals = getProp(ini,"allowOverloadedTerminals", "false");
+ 	String  iUseStoredProcs     = getProp(ini,"useStoredProcedures");
+ 	log.info("Term-00, ");
+ 
+@@ -377,7 +378,9 @@ public class jTPCC implements jTPCCConfig
+ 		try
+ 		{
+ 		    numTerminals = Integer.parseInt(iTerminals);
+-		    if(numTerminals <= 0 || numTerminals > 10*numWarehouses)
++		    if(numTerminals <= 0)
++			throw new NumberFormatException();
++		    if(numTerminals > 10*numWarehouses && !Boolean.parseBoolean(iAllowOverloadedTerminals))
+ 			throw new NumberFormatException();
+ 		}
+ 		catch(NumberFormatException e1)

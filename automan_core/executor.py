@@ -18,7 +18,7 @@ from automan_core.ssh import CommandResult
 
 FATAL_OUTPUT_PATTERNS = (
     re.compile(r"FATAL:"),
-    re.compile(r"ERROR:"),
+    re.compile(r"\bERROR\b"),
     re.compile(r"Exception"),
     re.compile(r"Failed to"),
     re.compile(r"password authentication failed", re.IGNORECASE),
