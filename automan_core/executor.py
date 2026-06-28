@@ -66,7 +66,7 @@ def execute_campaign(
         host = _scheduling_host(target_by_id[run.target_id])
         runs_by_host.setdefault(host, []).append(run)
 
-    had_exception = False
+    exception_errors: list[str] = []
     with ThreadPoolExecutor(max_workers=len(runs_by_host)) as pool:
         futures = [
             pool.submit(_execute_host_queue, root, campaign_id, host_runs, target_by_id, collectors)
@@ -75,12 +75,14 @@ def execute_campaign(
         for future in as_completed(futures):
             exc = future.exception()
             if exc:
-                had_exception = True
-                _append_timeline(campaign_dir, {"event": "host_queue_exception", "error": str(exc)})
+                error = str(exc)
+                exception_errors.append(error)
+                _append_timeline(campaign_dir, {"event": "host_queue_exception", "error": error})
 
     progress = load_yaml(campaign_dir / "progress.json")
-    if had_exception or int(progress.get("failed_runs", 0)) > 0:
-        _set_campaign_status(campaign_dir, "failed")
+    if exception_errors or int(progress.get("failed_runs", 0)) > 0:
+        last_error = progress.get("last_error") or "; ".join(exception_errors) or None
+        _set_campaign_status(campaign_dir, "failed", last_error)
     else:
         _set_campaign_status(campaign_dir, "success")
 
@@ -382,9 +384,17 @@ def _run_local(command: list[str], cwd: Path, timeout: int, env: dict[str, str] 
         return CommandResult(
             command=" ".join(command),
             exit_code=124,
-            stdout=exc.stdout or "",
-            stderr=exc.stderr or f"command timed out after {timeout} seconds",
+            stdout=_ensure_text(exc.stdout),
+            stderr=_ensure_text(exc.stderr) or f"command timed out after {timeout} seconds",
         )
+
+
+def _ensure_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
 
 
 def _phase_failure(result: CommandResult) -> str | None:
@@ -426,15 +436,19 @@ def _command_error_summary(result: CommandResult) -> str:
     return f"{result.command}: exit code {result.exit_code}"
 
 
-def _set_campaign_status(campaign_dir: Path, status: str) -> None:
+def _set_campaign_status(campaign_dir: Path, status: str, last_error: str | None = None) -> None:
     data = load_yaml(campaign_dir / "status.json") if (campaign_dir / "status.json").exists() else {}
     data["status"] = status
+    if last_error:
+        data["last_error"] = last_error
     data["updated_at"] = datetime.now().isoformat()
     write_json(campaign_dir / "status.json", data)
     progress_path = campaign_dir / "progress.json"
     if progress_path.exists():
         progress = load_yaml(progress_path)
         progress["status"] = status
+        if last_error:
+            progress["last_error"] = last_error
         write_json(progress_path, progress)
 
 
@@ -492,16 +506,18 @@ def _write_command_result(run_dir: Path, phase: str, result: CommandResult) -> N
     logs.mkdir(parents=True, exist_ok=True)
     stdout_path = logs / f"{phase}.stdout.log"
     stderr_path = logs / f"{phase}.stderr.log"
-    stdout_path.write_text(result.stdout, encoding="utf-8")
-    stderr_path.write_text(result.stderr, encoding="utf-8")
+    stdout = _ensure_text(result.stdout)
+    stderr = _ensure_text(result.stderr)
+    stdout_path.write_text(stdout, encoding="utf-8")
+    stderr_path.write_text(stderr, encoding="utf-8")
     data = {
         "phase": phase,
         "command": result.command,
         "exit_code": result.exit_code,
         "stdout_path": str(stdout_path),
         "stderr_path": str(stderr_path),
-        "stdout_bytes": len(result.stdout.encode("utf-8")),
-        "stderr_bytes": len(result.stderr.encode("utf-8")),
+        "stdout_bytes": len(stdout.encode("utf-8")),
+        "stderr_bytes": len(stderr.encode("utf-8")),
         "recorded_at": datetime.now().isoformat(),
     }
     write_json(logs / f"{phase}.result.json", data)

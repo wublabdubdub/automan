@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,6 +22,56 @@ class ExecutorPreparationTest(unittest.TestCase):
 
             self.assertNotEqual(result.exit_code, 0)
             self.assertIn("build-benchmarksql", result.stderr)
+
+    def test_run_local_timeout_decodes_partial_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            old_run = executor.subprocess.run
+            try:
+                def fake_run(*args, **kwargs):
+                    raise subprocess.TimeoutExpired(
+                        cmd=["./runDatabaseBuild.sh"],
+                        timeout=10800,
+                        output=b"partial stdout\n",
+                        stderr=b"partial stderr\n",
+                    )
+
+                executor.subprocess.run = fake_run
+
+                result = executor._run_local(["./runDatabaseBuild.sh"], Path(tmp), timeout=10800)
+            finally:
+                executor.subprocess.run = old_run
+
+            self.assertEqual(result.exit_code, 124)
+            self.assertEqual(result.stdout, "partial stdout\n")
+            self.assertEqual(result.stderr, "partial stderr\n")
+
+    def test_host_queue_exception_records_campaign_last_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, target, run = self._run_fixture(Path(tmp), skip_destroy=True)
+            old_execution = executor._preflight_execution_host
+            old_benchmark = executor._preflight_benchmarksql
+            old_host_queue = executor._execute_host_queue
+            try:
+                executor._preflight_execution_host = lambda targets: CommandResult("execution", 0, "", "")
+                executor._preflight_benchmarksql = lambda root: CommandResult("benchmarksql", 0, "", "")
+
+                def fail_host_queue(*args, **kwargs):
+                    raise RuntimeError("data must be str, not bytes")
+
+                executor._execute_host_queue = fail_host_queue
+
+                executor.execute_campaign(root, "campaign", [target], [run])
+            finally:
+                executor._preflight_execution_host = old_execution
+                executor._preflight_benchmarksql = old_benchmark
+                executor._execute_host_queue = old_host_queue
+
+            campaign_dir = root / "runs/campaigns/campaign"
+            status = load_yaml(campaign_dir / "status.json")
+            progress = load_yaml(campaign_dir / "progress.json")
+            self.assertEqual(status["status"], "failed")
+            self.assertIn("data must be str", status["last_error"])
+            self.assertIn("data must be str", progress["last_error"])
 
     def test_prepare_run_dir_renders_mars3_options_without_touching_global_tool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

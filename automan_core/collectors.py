@@ -7,6 +7,7 @@ import signal
 import socket
 import stat
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -82,6 +83,10 @@ class CollectorManager:
                 collector.stop(phase)
             except Exception as exc:
                 errors.append(str(exc))
+                try:
+                    collector.cleanup(phase)
+                except Exception as cleanup_exc:
+                    errors.append(f"cleanup failed: {cleanup_exc}")
         if errors:
             raise CollectorError(f"collector stop failed for {phase}: {'; '.join(errors)}")
 
@@ -186,6 +191,9 @@ class _HostCollector:
 
     def stop(self, phase: str) -> None:
         raise NotImplementedError
+
+    def cleanup(self, phase: str) -> None:
+        return None
 
 
 @dataclass
@@ -466,6 +474,15 @@ class _RemoteHostCollector(_HostCollector):
         if errors:
             raise CollectorError(f"{self.role}: {'; '.join(errors)}")
 
+    def cleanup(self, phase: str) -> None:
+        phase_dir = self._phase_dir(phase)
+        client = self._client()
+        try:
+            for name, _, _, output_dir in reversed(self._commands(phase_dir)):
+                self._run(client, self._force_stop_command(output_dir, name), timeout=45)
+        finally:
+            client.close()
+
     def _phase_dir(self, phase: str) -> str:
         return posixpath.join(self.remote_dir, _safe_path_part(phase))
 
@@ -525,21 +542,45 @@ class _RemoteHostCollector(_HostCollector):
             "kill -KILL \"$pid\" 2>/dev/null || true"
         )
 
-    def _client(self) -> paramiko.SSHClient:
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(
-            hostname=self.host,
-            port=self.port,
-            username=self.user,
-            password=self.password,
-            timeout=10,
-            banner_timeout=10,
-            auth_timeout=10,
-            look_for_keys=False,
-            allow_agent=False,
+    def _force_stop_command(self, phase_dir: str, name: str) -> str:
+        pidfile = shlex.quote(posixpath.join(phase_dir, f"{name}.pid"))
+        return (
+            f"pid=$(cat {pidfile} 2>/dev/null || true); "
+            "if [ -z \"$pid\" ]; then exit 0; fi; "
+            "comm=$(ps -p \"$pid\" -o comm= 2>/dev/null || true); "
+            "case \"$comm\" in "
+            "vmstat|iostat|mpstat|pidstat|perf|sleep) "
+            "kill -TERM \"$pid\" 2>/dev/null || true; "
+            "sleep 2; "
+            "kill -KILL \"$pid\" 2>/dev/null || true ;; "
+            "*) exit 0 ;; "
+            "esac"
         )
-        return client
+
+    def _client(self) -> paramiko.SSHClient:
+        last_error: Exception | None = None
+        for attempt in range(3):
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            try:
+                client.connect(
+                    hostname=self.host,
+                    port=self.port,
+                    username=self.user,
+                    password=self.password,
+                    timeout=15,
+                    banner_timeout=30,
+                    auth_timeout=15,
+                    look_for_keys=False,
+                    allow_agent=False,
+                )
+                return client
+            except (paramiko.SSHException, socket.error, TimeoutError) as exc:
+                last_error = exc
+                client.close()
+                if attempt < 2:
+                    time.sleep(2)
+        raise CollectorError(f"{self.role}: SSH connect failed to {self.user}@{self.host}:{self.port}: {last_error}")
 
     def _run_checked(self, client: paramiko.SSHClient, command: str, timeout: int = 120) -> None:
         code, out, err = self._run(client, command, timeout)

@@ -131,6 +131,27 @@ class CollectorsTest(unittest.TestCase):
             self.assertIn("skipped remote collector artifact larger than", marker.read_text(encoding="utf-8"))
             self.assertEqual(collector.command_results[0]["name"], "fetch-skip")
 
+    def test_stop_phase_attempts_cleanup_after_collector_stop_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manager = CollectorManager(root, _target(), _run(root), config={"enabled": False})
+            events: list[tuple[str, str]] = []
+
+            class FailingCollector:
+                def stop(self, phase):
+                    events.append(("stop", phase))
+                    raise RuntimeError("No existing session")
+
+                def cleanup(self, phase):
+                    events.append(("cleanup", phase))
+
+            manager._active["runDatabaseBuild.sh"] = [FailingCollector()]
+
+            with self.assertRaisesRegex(Exception, "No existing session"):
+                manager.stop_phase("runDatabaseBuild.sh")
+
+            self.assertEqual(events, [("stop", "runDatabaseBuild.sh"), ("cleanup", "runDatabaseBuild.sh")])
+
 
 class FakeProcess:
     def poll(self):
