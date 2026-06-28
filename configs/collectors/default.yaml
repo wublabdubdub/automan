@@ -16,7 +16,7 @@ collectors:
       - mpstat
 
   # perf uses `perf record`, not flame graphs or perf stat.
-  # The default records at 99 Hz during runBenchmark.sh only.
+  # The default samples runBenchmark.sh at 99 Hz in three short windows.
   perf:
     enabled: true
     phases:
@@ -26,3 +26,8 @@ collectors:
     frequency: 99
     call_graph: fp
     record_scope: system
+    mode: sampled
+    sample_count: 3
+    sample_duration_seconds: 60
+    sample_delay_ratio: 0.2
+    sample_interval_ratio: 0.3

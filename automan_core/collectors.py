@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import posixpath
 import shlex
+import shutil
 import signal
 import socket
 import stat
@@ -56,6 +57,23 @@ class CollectorManager:
         self.perf_phases = set(str(phase) for phase in self._section("perf").get("phases", list(DEFAULT_PERF_PHASES)))
         self.perf_host_roles = set(str(role) for role in self._section("perf").get("host_roles", ["database"]))
         self.perf_call_graph = str(self._section("perf").get("call_graph", "fp"))
+        self.perf_mode = str(self._section("perf").get("mode", "sampled")).lower()
+        self.perf_sample_count = int(self._section("perf").get("sample_count", 3))
+        self.perf_sample_duration_seconds = int(self._section("perf").get("sample_duration_seconds", 60))
+        self.perf_sample_delay_seconds = _optional_int(self._section("perf").get("sample_delay_seconds"))
+        self.perf_sample_interval_seconds = _optional_int(self._section("perf").get("sample_interval_seconds"))
+        self.perf_sample_delay_ratio = float(self._section("perf").get("sample_delay_ratio", 0.2))
+        self.perf_sample_interval_ratio = float(self._section("perf").get("sample_interval_ratio", 0.3))
+        self.perf_samples = _build_perf_samples(
+            mode=self.perf_mode,
+            run_mins=run.run_mins,
+            count=self.perf_sample_count,
+            duration_seconds=self.perf_sample_duration_seconds,
+            delay_seconds=self.perf_sample_delay_seconds,
+            interval_seconds=self.perf_sample_interval_seconds,
+            delay_ratio=self.perf_sample_delay_ratio,
+            interval_ratio=self.perf_sample_interval_ratio,
+        )
         self.run_dir = root / "runs" / run.run_id
         self._active: dict[str, list[_HostCollector]] = {}
 
@@ -109,6 +127,8 @@ class CollectorManager:
                         system_tools=self.system_tools,
                         perf_frequency=self.perf_frequency,
                         perf_call_graph=self.perf_call_graph,
+                        perf_mode=self.perf_mode,
+                        perf_samples=self.perf_samples,
                     )
                 )
             else:
@@ -128,6 +148,8 @@ class CollectorManager:
                         system_tools=self.system_tools,
                         perf_frequency=self.perf_frequency,
                         perf_call_graph=self.perf_call_graph,
+                        perf_mode=self.perf_mode,
+                        perf_samples=self.perf_samples,
                     )
                 )
         return host_collectors
@@ -175,6 +197,25 @@ class CollectorManager:
 
 
 @dataclass(frozen=True)
+class _PerfSample:
+    name: str
+    delay_seconds: int
+    duration_seconds: int
+
+    @property
+    def data_file(self) -> str:
+        return f"{self.name}.data"
+
+    @property
+    def script_file(self) -> str:
+        return f"{self.name}.script.txt"
+
+    @property
+    def report_file(self) -> str:
+        return f"{self.name}.report.txt"
+
+
+@dataclass(frozen=True)
 class _HostRole:
     name: str
     is_local: bool
@@ -217,6 +258,8 @@ class _LocalHostCollector(_HostCollector):
         system_tools: set[str],
         perf_frequency: int,
         perf_call_graph: str,
+        perf_mode: str = "continuous",
+        perf_samples: list[_PerfSample] | None = None,
     ) -> None:
         self.role = role
         self.output_dir = output_dir
@@ -228,6 +271,8 @@ class _LocalHostCollector(_HostCollector):
         self.system_tools = system_tools
         self.perf_frequency = perf_frequency
         self.perf_call_graph = perf_call_graph
+        self.perf_mode = perf_mode
+        self.perf_samples = perf_samples or []
         self.processes: list[_LocalProcess] = []
         self.started_at: str | None = None
         self.commands: list[dict[str, Any]] = []
@@ -241,6 +286,8 @@ class _LocalHostCollector(_HostCollector):
         for name, command, stop_signal, output_dir in self._commands():
             self.commands.append({"name": name, "command": command, "output_dir": str(output_dir)})
             output_dir.mkdir(parents=True, exist_ok=True)
+            if name == "perf-record":
+                self._write_perf_samples()
             stdout = (output_dir / f"{name}.log").open("w", encoding="utf-8")
             stderr = (output_dir / f"{name}.stderr.log").open("w", encoding="utf-8")
             try:
@@ -298,17 +345,10 @@ class _LocalHostCollector(_HostCollector):
                 name, command = system_commands[tool]
                 commands.append((name, command, signal.SIGTERM, self.system_dir))
         if self.include_perf:
-            perf_command = [
-                "perf",
-                "record",
-                "-F",
-                str(self.perf_frequency),
-                "-a",
-                "-o",
-                str(self.perf_dir / "perf.data"),
-            ]
-            perf_command.extend(_call_graph_args(self.perf_call_graph))
-            perf_command.extend(["--", "sleep", "86400"])
+            if self._sampled_perf_enabled():
+                perf_command = ["sh", "-c", self._sampled_perf_shell_script(self.perf_dir)]
+            else:
+                perf_command = self._perf_record_command(str(self.perf_dir / "perf.data"), 86400)
             commands.append(
                 (
                     "perf-record",
@@ -320,17 +360,93 @@ class _LocalHostCollector(_HostCollector):
         return commands
 
     def _export_perf(self) -> list[str]:
-        perf_data = self.perf_dir / "perf.data"
-        if not perf_data.exists():
-            return ["perf.data was not created"]
-        return [
-            error
-            for error in (
-                self._run_export(["perf", "script", "-i", str(perf_data)], "perf.script.txt"),
-                self._run_export(["perf", "report", "--stdio", "-i", str(perf_data)], "perf.report.txt"),
+        if not self._sampled_perf_enabled():
+            perf_data = self.perf_dir / "perf.data"
+            if not perf_data.exists():
+                return ["perf.data was not created"]
+            return [
+                error
+                for error in (
+                    self._run_export(["perf", "script", "-i", str(perf_data)], "perf.script.txt"),
+                    self._run_export(["perf", "report", "--stdio", "-i", str(perf_data)], "perf.report.txt"),
+                )
+                if error
+            ]
+
+        data_files = [self.perf_dir / sample.data_file for sample in self.perf_samples if (self.perf_dir / sample.data_file).exists()]
+        if not data_files:
+            return ["perf sample data was not created"]
+        errors = []
+        for data_file in data_files:
+            stem = data_file.stem
+            errors.extend(
+                error
+                for error in (
+                    self._run_export(["perf", "script", "-i", str(data_file)], f"{stem}.script.txt"),
+                    self._run_export(["perf", "report", "--stdio", "-i", str(data_file)], f"{stem}.report.txt"),
+                )
+                if error
             )
-            if error
+        if not errors:
+            self._copy_first_sample_to_legacy_names(data_files[0])
+        return errors
+
+    def _sampled_perf_enabled(self) -> bool:
+        return self.perf_mode == "sampled" and bool(self.perf_samples)
+
+    def _perf_record_command(self, data_path: str, duration_seconds: int) -> list[str]:
+        command = [
+            "perf",
+            "record",
+            "-F",
+            str(self.perf_frequency),
+            "-a",
+            "-o",
+            data_path,
         ]
+        command.extend(_call_graph_args(self.perf_call_graph))
+        command.extend(["--", "sleep", str(duration_seconds)])
+        return command
+
+    def _sampled_perf_shell_script(self, perf_dir: Path) -> str:
+        lines = [
+            "set -eu",
+            "child=",
+            "cleanup() { if [ -n \"${child:-}\" ]; then kill -INT \"$child\" 2>/dev/null || true; wait \"$child\" 2>/dev/null || true; fi; exit 0; }",
+            "trap cleanup INT TERM",
+            "run_child() { \"$@\" & child=$!; wait \"$child\"; child=; }",
+            "elapsed=0",
+        ]
+        for sample in self.perf_samples:
+            sleep_seconds = max(0, sample.delay_seconds)
+            lines.extend(
+                [
+                    f"wait_seconds=$(( {sleep_seconds} - elapsed ))",
+                    "if [ \"$wait_seconds\" -gt 0 ]; then run_child sleep \"$wait_seconds\"; elapsed=$((elapsed + wait_seconds)); fi",
+                ]
+            )
+            command = self._perf_record_command(str(perf_dir / sample.data_file), sample.duration_seconds)
+            lines.append("run_child " + " ".join(shlex.quote(part) for part in command))
+            lines.append(f"elapsed=$((elapsed + {sample.duration_seconds}))")
+        return "\n".join(lines)
+
+    def _write_perf_samples(self) -> None:
+        if not self._sampled_perf_enabled():
+            return
+        payload = _perf_samples_manifest(self.perf_samples)
+        self.perf_dir.mkdir(parents=True, exist_ok=True)
+        (self.perf_dir / "samples.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    def _copy_first_sample_to_legacy_names(self, data_file: Path) -> None:
+        stem = data_file.stem
+        shutil.copy2(data_file, self.perf_dir / "perf.data")
+        for source_name, target_name in (
+            (f"{stem}.script.txt", "perf.script.txt"),
+            (f"{stem}.report.txt", "perf.report.txt"),
+        ):
+            source = self.perf_dir / source_name
+            if source.exists():
+                shutil.copy2(source, self.perf_dir / target_name)
 
     def _run_export(self, command: list[str], output_name: str) -> str | None:
         output_path = self.perf_dir / output_name
@@ -367,6 +483,8 @@ class _LocalHostCollector(_HostCollector):
             "system_tools": sorted(self.system_tools),
             "perf_frequency": self.perf_frequency,
             "perf_call_graph": self.perf_call_graph,
+            "perf_mode": self.perf_mode,
+            "perf_samples": _perf_samples_manifest(self.perf_samples) if self._sampled_perf_enabled() else [],
             "commands": self.commands,
             "command_results": self.command_results,
             "errors": errors or [],
@@ -408,6 +526,8 @@ class _RemoteHostCollector(_HostCollector):
         system_tools: set[str],
         perf_frequency: int,
         perf_call_graph: str,
+        perf_mode: str = "continuous",
+        perf_samples: list[_PerfSample] | None = None,
     ) -> None:
         self.role = role
         self.output_dir = output_dir
@@ -427,6 +547,8 @@ class _RemoteHostCollector(_HostCollector):
         self.system_tools = system_tools
         self.perf_frequency = perf_frequency
         self.perf_call_graph = perf_call_graph
+        self.perf_mode = perf_mode
+        self.perf_samples = perf_samples or []
         self.started_at: str | None = None
         self.commands: list[dict[str, Any]] = []
         self.command_results: list[dict[str, Any]] = []
@@ -439,9 +561,12 @@ class _RemoteHostCollector(_HostCollector):
         client = self._client()
         try:
             self._run_checked(client, f"mkdir -p {shlex.quote(posixpath.join(phase_dir, 'system'))} {shlex.quote(posixpath.join(phase_dir, 'perf'))}")
+            if self.include_perf:
+                self._write_remote_perf_samples(client, posixpath.join(phase_dir, "perf"))
             for name, command, _, output_dir in self._commands(phase_dir):
                 self.commands.append({"name": name, "command": command, "remote_output_dir": output_dir})
-                self._run_checked(client, f"command -v {shlex.quote(command[0])} >/dev/null 2>&1")
+                tool = "perf" if name == "perf-record" else command[0]
+                self._run_checked(client, f"command -v {shlex.quote(tool)} >/dev/null 2>&1")
                 self._run_checked(client, self._background_command(command, output_dir, name))
         finally:
             client.close()
@@ -459,12 +584,9 @@ class _RemoteHostCollector(_HostCollector):
                     errors.append(f"{name}: {result[2].strip() or result[1].strip() or result[0]}")
             if self.include_perf:
                 perf_dir = posixpath.join(phase_dir, "perf")
-                for command in (
-                    f"cd {shlex.quote(perf_dir)} && perf script -i perf.data > perf.script.txt 2> perf.script.txt.stderr.log",
-                    f"cd {shlex.quote(perf_dir)} && perf report --stdio -i perf.data > perf.report.txt 2> perf.report.txt.stderr.log",
-                ):
+                for name, command in self._remote_perf_export_commands(perf_dir):
                     code, out, err = self._run(client, command, timeout=300)
-                    self.command_results.append({"name": command.split()[0], "command": command, "exit_code": code, "stdout": out, "stderr": err})
+                    self.command_results.append({"name": name, "command": command, "exit_code": code, "stdout": out, "stderr": err})
                     if code != 0:
                         errors.append(f"{command}: {err.strip() or out.strip() or code}")
             self._fetch_tree(client, phase_dir, self.output_dir)
@@ -504,17 +626,10 @@ class _RemoteHostCollector(_HostCollector):
                 name, command = system_commands[tool]
                 commands.append((name, command, "TERM", system_dir))
         if self.include_perf:
-            perf_command = [
-                "perf",
-                "record",
-                "-F",
-                str(self.perf_frequency),
-                "-a",
-                "-o",
-                posixpath.join(perf_dir, "perf.data"),
-            ]
-            perf_command.extend(_call_graph_args(self.perf_call_graph))
-            perf_command.extend(["--", "sleep", "86400"])
+            if self._sampled_perf_enabled():
+                perf_command = ["sh", "-c", self._sampled_perf_shell_script(perf_dir)]
+            else:
+                perf_command = self._perf_record_command(posixpath.join(perf_dir, "perf.data"), 86400)
             commands.append(
                 (
                     "perf-record",
@@ -524,6 +639,81 @@ class _RemoteHostCollector(_HostCollector):
                 )
             )
         return commands
+
+    def _sampled_perf_enabled(self) -> bool:
+        return self.perf_mode == "sampled" and bool(self.perf_samples)
+
+    def _perf_record_command(self, data_path: str, duration_seconds: int) -> list[str]:
+        command = [
+            "perf",
+            "record",
+            "-F",
+            str(self.perf_frequency),
+            "-a",
+            "-o",
+            data_path,
+        ]
+        command.extend(_call_graph_args(self.perf_call_graph))
+        command.extend(["--", "sleep", str(duration_seconds)])
+        return command
+
+    def _sampled_perf_shell_script(self, perf_dir: str) -> str:
+        lines = [
+            "set -eu",
+            "child=",
+            "cleanup() { if [ -n \"${child:-}\" ]; then kill -INT \"$child\" 2>/dev/null || true; wait \"$child\" 2>/dev/null || true; fi; exit 0; }",
+            "trap cleanup INT TERM",
+            "run_child() { \"$@\" & child=$!; wait \"$child\"; child=; }",
+            "elapsed=0",
+        ]
+        for sample in self.perf_samples:
+            sleep_seconds = max(0, sample.delay_seconds)
+            lines.extend(
+                [
+                    f"wait_seconds=$(( {sleep_seconds} - elapsed ))",
+                    "if [ \"$wait_seconds\" -gt 0 ]; then run_child sleep \"$wait_seconds\"; elapsed=$((elapsed + wait_seconds)); fi",
+                ]
+            )
+            command = self._perf_record_command(posixpath.join(perf_dir, sample.data_file), sample.duration_seconds)
+            lines.append("run_child " + " ".join(shlex.quote(part) for part in command))
+            lines.append(f"elapsed=$((elapsed + {sample.duration_seconds}))")
+        return "\n".join(lines)
+
+    def _write_remote_perf_samples(self, client: paramiko.SSHClient, perf_dir: str) -> None:
+        if not self._sampled_perf_enabled():
+            return
+        payload = json.dumps(_perf_samples_manifest(self.perf_samples), ensure_ascii=False, indent=2) + "\n"
+        command = f"cat > {shlex.quote(posixpath.join(perf_dir, 'samples.json'))} <<'AUTOMAN_PERF_SAMPLES'\n{payload}AUTOMAN_PERF_SAMPLES\n"
+        self._run_checked(client, command)
+
+    def _remote_perf_export_commands(self, perf_dir: str) -> list[tuple[str, str]]:
+        if not self._sampled_perf_enabled():
+            return [
+                ("perf.script.txt", f"cd {shlex.quote(perf_dir)} && perf script -i perf.data > perf.script.txt 2> perf.script.txt.stderr.log"),
+                ("perf.report.txt", f"cd {shlex.quote(perf_dir)} && perf report --stdio -i perf.data > perf.report.txt 2> perf.report.txt.stderr.log"),
+            ]
+
+        data_files = " ".join(shlex.quote(sample.data_file) for sample in self.perf_samples)
+        script = f"""set -e
+cd {shlex.quote(perf_dir)}
+found=
+first=
+for data in {data_files}; do
+  if [ -s "$data" ]; then
+    found=1
+    if [ -z "$first" ]; then first="$data"; fi
+    stem=${{data%.data}}
+    perf script -i "$data" > "$stem.script.txt" 2> "$stem.script.txt.stderr.log"
+    perf report --stdio -i "$data" > "$stem.report.txt" 2> "$stem.report.txt.stderr.log"
+  fi
+done
+if [ -z "$found" ]; then echo "perf sample data was not created" >&2; exit 1; fi
+first_stem=${{first%.data}}
+cp -f "$first" perf.data
+cp -f "$first_stem.script.txt" perf.script.txt
+cp -f "$first_stem.report.txt" perf.report.txt
+"""
+        return [("perf-samples-export", script)]
 
     def _background_command(self, command: list[str], phase_dir: str, name: str) -> str:
         stdout = shlex.quote(posixpath.join(phase_dir, f"{name}.log"))
@@ -549,7 +739,7 @@ class _RemoteHostCollector(_HostCollector):
             "if [ -z \"$pid\" ]; then exit 0; fi; "
             "comm=$(ps -p \"$pid\" -o comm= 2>/dev/null || true); "
             "case \"$comm\" in "
-            "vmstat|iostat|mpstat|pidstat|perf|sleep) "
+            "vmstat|iostat|mpstat|pidstat|perf|sleep|sh) "
             "kill -TERM \"$pid\" 2>/dev/null || true; "
             "sleep 2; "
             "kill -KILL \"$pid\" 2>/dev/null || true ;; "
@@ -648,6 +838,8 @@ class _RemoteHostCollector(_HostCollector):
             "system_tools": sorted(self.system_tools),
             "perf_frequency": self.perf_frequency,
             "perf_call_graph": self.perf_call_graph,
+            "perf_mode": self.perf_mode,
+            "perf_samples": _perf_samples_manifest(self.perf_samples) if self._sampled_perf_enabled() else [],
             "commands": self.commands,
             "command_results": self.command_results,
             "errors": errors or [],
@@ -673,6 +865,64 @@ class _RemoteHostCollector(_HostCollector):
 
 def _safe_path_part(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in value)
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _build_perf_samples(
+    *,
+    mode: str,
+    run_mins: int,
+    count: int,
+    duration_seconds: int,
+    delay_seconds: int | None,
+    interval_seconds: int | None,
+    delay_ratio: float,
+    interval_ratio: float,
+) -> list[_PerfSample]:
+    if mode != "sampled" or count <= 0 or duration_seconds <= 0:
+        return []
+    total_seconds = max(0, int(run_mins) * 60)
+    first_delay = delay_seconds if delay_seconds is not None else int(total_seconds * delay_ratio)
+    interval = interval_seconds if interval_seconds is not None else int(total_seconds * interval_ratio)
+    first_delay = max(0, first_delay)
+    interval = max(0, interval)
+    samples: list[_PerfSample] = []
+    for index in range(count):
+        sample_delay = first_delay + (interval * index)
+        if total_seconds > 0 and sample_delay >= total_seconds:
+            break
+        sample_duration = duration_seconds
+        if total_seconds > 0:
+            sample_duration = min(sample_duration, max(1, total_seconds - sample_delay))
+        samples.append(
+            _PerfSample(
+                name=f"perf-{index + 1:03d}",
+                delay_seconds=sample_delay,
+                duration_seconds=sample_duration,
+            )
+        )
+    if samples:
+        return samples
+    return [_PerfSample(name="perf-001", delay_seconds=0, duration_seconds=duration_seconds)]
+
+
+def _perf_samples_manifest(samples: list[_PerfSample]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": sample.name,
+            "delay_seconds": sample.delay_seconds,
+            "duration_seconds": sample.duration_seconds,
+            "data_file": sample.data_file,
+            "script_file": sample.script_file,
+            "report_file": sample.report_file,
+        }
+        for sample in samples
+    ]
 
 
 def _call_graph_args(call_graph: str) -> list[str]:

@@ -625,6 +625,10 @@ runs/<run_id>/
           perf.data
           perf.script.txt
           perf.report.txt
+          perf-001.data
+          perf-001.script.txt
+          perf-001.report.txt
+          samples.json
 ```
 
 BenchmarkSQL 工作目录：

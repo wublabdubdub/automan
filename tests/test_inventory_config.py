@@ -23,6 +23,9 @@ class InventoryConfigTest(unittest.TestCase):
         self.assertEqual(task.collectors.system.interval_seconds, 1)
         self.assertEqual(task.collectors.perf.frequency, 99)
         self.assertEqual(task.collectors.perf.phases, ["runBenchmark.sh"])
+        self.assertEqual(task.collectors.perf.mode, "sampled")
+        self.assertEqual(task.collectors.perf.sample_count, 3)
+        self.assertEqual(task.collectors.perf.sample_duration_seconds, 60)
 
         target = task.targets[0]
         self.assertEqual(target.id, "pg")

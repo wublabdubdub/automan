@@ -216,6 +216,13 @@ def _collector_config_dict(root: Path, collectors: CollectorConfig | dict | None
                 "frequency": collectors.perf.frequency,
                 "call_graph": collectors.perf.call_graph,
                 "record_scope": collectors.perf.record_scope,
+                "mode": collectors.perf.mode,
+                "sample_count": collectors.perf.sample_count,
+                "sample_duration_seconds": collectors.perf.sample_duration_seconds,
+                "sample_delay_seconds": collectors.perf.sample_delay_seconds,
+                "sample_interval_seconds": collectors.perf.sample_interval_seconds,
+                "sample_delay_ratio": collectors.perf.sample_delay_ratio,
+                "sample_interval_ratio": collectors.perf.sample_interval_ratio,
             },
         }
     if isinstance(collectors, dict):

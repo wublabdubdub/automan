@@ -440,6 +440,13 @@ def _load_collectors(value: Any, task_path: Path) -> CollectorConfig:
         frequency=int(perf_raw.get("frequency", perf_raw.get("freq", 99))),
         call_graph=str(perf_raw.get("call_graph", "fp")),
         record_scope=str(perf_raw.get("record_scope", "system")),
+        mode=str(perf_raw.get("mode", "sampled")).lower(),
+        sample_count=int(perf_raw.get("sample_count", 3)),
+        sample_duration_seconds=int(perf_raw.get("sample_duration_seconds", 60)),
+        sample_delay_seconds=_optional_int(perf_raw.get("sample_delay_seconds")),
+        sample_interval_seconds=_optional_int(perf_raw.get("sample_interval_seconds")),
+        sample_delay_ratio=float(perf_raw.get("sample_delay_ratio", 0.2)),
+        sample_interval_ratio=float(perf_raw.get("sample_interval_ratio", 0.3)),
     )
     return CollectorConfig(
         enabled=_bool(raw.get("enabled", True)),
@@ -466,6 +473,7 @@ def _validate_collectors(collectors: CollectorConfig) -> list[ValidationMessage]
     messages: list[ValidationMessage] = []
     allowed_roles = {"execution", "database"}
     allowed_call_graph = {"fp", "dwarf", "lbr", "none"}
+    allowed_perf_modes = {"continuous", "sampled"}
     allowed_system_tools = {"vmstat", "iostat", "pidstat", "mpstat"}
 
     if not collectors.enabled:
@@ -493,6 +501,27 @@ def _validate_collectors(collectors: CollectorConfig) -> list[ValidationMessage]
             messages.append(ValidationMessage("OK", f"perf call_graph={collectors.perf.call_graph}"))
         else:
             messages.append(ValidationMessage("FAIL", "collectors.perf.call_graph must be one of: dwarf, fp, lbr, none"))
+        if collectors.perf.mode in allowed_perf_modes:
+            messages.append(ValidationMessage("OK", f"perf mode={collectors.perf.mode}"))
+        else:
+            messages.append(ValidationMessage("FAIL", "collectors.perf.mode must be one of: continuous, sampled"))
+        if collectors.perf.mode == "sampled":
+            if collectors.perf.sample_count > 0:
+                messages.append(ValidationMessage("OK", f"perf sample_count={collectors.perf.sample_count}"))
+            else:
+                messages.append(ValidationMessage("FAIL", "collectors.perf.sample_count must be positive"))
+            if collectors.perf.sample_duration_seconds > 0:
+                messages.append(ValidationMessage("OK", f"perf sample_duration_seconds={collectors.perf.sample_duration_seconds}"))
+            else:
+                messages.append(ValidationMessage("FAIL", "collectors.perf.sample_duration_seconds must be positive"))
+            if collectors.perf.sample_delay_seconds is not None and collectors.perf.sample_delay_seconds < 0:
+                messages.append(ValidationMessage("FAIL", "collectors.perf.sample_delay_seconds must be zero or positive"))
+            if collectors.perf.sample_interval_seconds is not None and collectors.perf.sample_interval_seconds < 0:
+                messages.append(ValidationMessage("FAIL", "collectors.perf.sample_interval_seconds must be zero or positive"))
+            if collectors.perf.sample_delay_ratio < 0:
+                messages.append(ValidationMessage("FAIL", "collectors.perf.sample_delay_ratio must be zero or positive"))
+            if collectors.perf.sample_interval_ratio < 0:
+                messages.append(ValidationMessage("FAIL", "collectors.perf.sample_interval_ratio must be zero or positive"))
         messages.extend(_validate_host_roles("collectors.perf.host_roles", collectors.perf.host_roles, allowed_roles))
 
     return messages
@@ -529,6 +558,12 @@ def _bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.lower() not in {"0", "false", "no", "off"}
     return bool(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)
 
 
 def _first_host(group: dict[str, Any]) -> tuple[str, dict[str, Any]]:

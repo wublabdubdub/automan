@@ -73,6 +73,10 @@ class CollectorsTest(unittest.TestCase):
             artifact_paths = [item["path"].replace("\\", "/") for item in manifest["artifacts"]]
             self.assertTrue(any(path.endswith("system/vmstat.log") for path in artifact_paths))
             self.assertTrue(any(path.endswith("perf/perf.data") for path in artifact_paths))
+            self.assertTrue(any(path.endswith("perf/perf-001.data") for path in artifact_paths))
+            self.assertTrue(any(path.endswith("perf/samples.json") for path in artifact_paths))
+            self.assertEqual(manifest["perf_mode"], "sampled")
+            self.assertEqual(len(manifest["perf_samples"]), 3)
 
     def test_collector_manager_respects_perf_phase_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -174,6 +178,10 @@ def fake_popen(command, stdout, stderr, text, cwd):
     stderr.flush()
     if command and command[0] == "perf":
         perf_data = Path(command[command.index("-o") + 1])
+        perf_data.parent.mkdir(parents=True, exist_ok=True)
+        perf_data.write_bytes(b"PERF")
+    if command and command[0] == "sh" and "perf-001.data" in command[-1]:
+        perf_data = Path(cwd) / "perf-001.data"
         perf_data.parent.mkdir(parents=True, exist_ok=True)
         perf_data.write_bytes(b"PERF")
     return FakeProcess()

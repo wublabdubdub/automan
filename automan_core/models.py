@@ -21,6 +21,13 @@ class PerfCollectorConfig:
     frequency: int = 99
     call_graph: str = "fp"
     record_scope: str = "system"
+    mode: str = "sampled"
+    sample_count: int = 3
+    sample_duration_seconds: int = 60
+    sample_delay_seconds: int | None = None
+    sample_interval_seconds: int | None = None
+    sample_delay_ratio: float = 0.2
+    sample_interval_ratio: float = 0.3
 
 
 @dataclass(frozen=True)
