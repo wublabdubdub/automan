@@ -1,9 +1,7 @@
 -- ----
--- YMatrix master-only TPC-C build finish.
---
--- BenchmarkSQL's PostgreSQL default runs a database-wide "vacuum analyze"
--- here. On YMatrix master-only this can hang the build phase for large TPC-C
--- loads and prevent the benchmark phase from starting. TPC-C transactions in
--- this profile are primary-key driven, so automan skips the blocking full
--- vacuum step for YMatrix and leaves statistics maintenance to the database.
+-- Extra commands to run after the tables are created, loaded,
+-- indexes built and extra's created.
+-- PostgreSQL version.
 -- ----
+
+vacuum analyze;
