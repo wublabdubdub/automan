@@ -1,22 +1,22 @@
 ---
 - name: Explain runtime collector ownership
   ansible.builtin.debug:
-    msg: "Runtime CPU/memory/IO/perf collection is started and stopped by automan_core.executor per BenchmarkSQL phase; this Ansible role only mirrors campaign status files."
+    msg: "Runtime CPU/memory/IO/perf collection is started and stopped by automan_core.executor per BenchmarkSQL phase; this Ansible role only mirrors job status files."
   tags:
     - collector
 
-- name: Collect latest campaign status files
+- name: Collect latest job status files
   ansible.builtin.shell: |
     set -euo pipefail
     mkdir -p runs/collector
-    latest="$(ls -1dt runs/campaigns/* 2>/dev/null | head -n 1 || true)"
+    latest="$(ls -1dt runs/jobs/* 2>/dev/null | head -n 1 || true)"
     if [ -z "$latest" ]; then
-      echo "no campaigns found"
+      echo "no jobs found"
       exit 0
     fi
     dest="runs/collector/$(basename "$latest")"
     mkdir -p "$dest"
-    for file in progress.json status.json campaign.yaml resolved-plan.yaml timeline.jsonl; do
+    for file in job.json status.json job.yaml resolved-plan.yaml timeline.jsonl; do
       if [ -f "$latest/$file" ]; then
         cp -f "$latest/$file" "$dest/$file"
       fi

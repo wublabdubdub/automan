@@ -23,33 +23,37 @@ FATAL_OUTPUT_PATTERNS = (
     re.compile(r"Failed to"),
     re.compile(r"password authentication failed", re.IGNORECASE),
 )
+MEASURED_TPMC_PATTERN = re.compile(r"Measured\s+tpmC\s*\(NewOrders\)\s*=\s*[0-9]+(?:\.[0-9]+)?")
 COLLECTED_PHASES = {"runDatabaseBuild.sh", "runBenchmark.sh"}
 
 
-def execute_campaign(
+def execute_job(
     root: Path,
-    campaign_id: str,
+    job_id: str,
     targets: list[Target],
     runs: list[RunSpec],
     collectors: CollectorConfig | dict | None = None,
+    stage: str | None = None,
 ) -> None:
-    campaign_dir = root / "runs" / "campaigns" / campaign_id
-    _set_campaign_status(campaign_dir, "running")
+    if stage not in {None, "load", "destroy", "bench"}:
+        raise ValueError("stage must be one of: load, destroy, bench")
+    job_dir = root / "runs" / "jobs" / job_id
+    _set_job_status(job_dir, "running")
     execution_host_check = _preflight_execution_host(targets)
     if execution_host_check.exit_code != 0:
-        _append_timeline(campaign_dir, {"event": "preflight_failed", "results": [_result_dict(execution_host_check)]})
-        _set_campaign_status(campaign_dir, "failed")
+        _append_timeline(job_dir, {"event": "preflight_failed", "results": [_result_dict(execution_host_check)]})
+        _set_job_status(job_dir, "failed")
         return
     preflight = _preflight_benchmarksql(root)
     if preflight.exit_code != 0:
-        _append_timeline(campaign_dir, {"event": "preflight_failed", "results": [_result_dict(preflight)]})
-        _set_campaign_status(campaign_dir, "failed")
+        _append_timeline(job_dir, {"event": "preflight_failed", "results": [_result_dict(preflight)]})
+        _set_job_status(job_dir, "failed")
         return
 
     for target in targets:
         if target.manual_parameter_commands:
             _append_timeline(
-                campaign_dir,
+                job_dir,
                 {
                     "event": "manual_parameter_commands_declared",
                     "target": target.id,
@@ -57,7 +61,7 @@ def execute_campaign(
                 },
             )
     if not runs:
-        _set_campaign_status(campaign_dir, "success")
+        _set_job_status(job_dir, "success")
         return
 
     runs_by_host: dict[str, list[RunSpec]] = {}
@@ -69,7 +73,7 @@ def execute_campaign(
     exception_errors: list[str] = []
     with ThreadPoolExecutor(max_workers=len(runs_by_host)) as pool:
         futures = [
-            pool.submit(_execute_host_queue, root, campaign_id, host_runs, target_by_id, collectors)
+            pool.submit(_execute_host_queue, root, job_id, host_runs, target_by_id, collectors, stage)
             for host_runs in runs_by_host.values()
         ]
         for future in as_completed(futures):
@@ -77,79 +81,84 @@ def execute_campaign(
             if exc:
                 error = str(exc)
                 exception_errors.append(error)
-                _append_timeline(campaign_dir, {"event": "host_queue_exception", "error": error})
+                _append_timeline(job_dir, {"event": "host_queue_exception", "error": error})
 
-    progress = load_yaml(campaign_dir / "progress.json")
-    if exception_errors or int(progress.get("failed_runs", 0)) > 0:
-        last_error = progress.get("last_error") or "; ".join(exception_errors) or None
-        _set_campaign_status(campaign_dir, "failed", last_error)
+    job_state = load_yaml(job_dir / "job.json")
+    if exception_errors or int(job_state.get("failed_runs", 0)) > 0:
+        last_error = job_state.get("last_error") or "; ".join(exception_errors) or None
+        _set_job_status(job_dir, "failed", last_error)
     else:
-        _set_campaign_status(campaign_dir, "success")
+        _set_job_status(job_dir, "success")
 
 
 def _execute_host_queue(
     root: Path,
-    campaign_id: str,
+    job_id: str,
     runs: list[RunSpec],
     target_by_id: dict[str, Target],
     collectors: CollectorConfig | dict | None = None,
+    stage: str | None = None,
 ) -> None:
     for run in runs:
         target = target_by_id[run.target_id]
-        _execute_run(root, campaign_id, target, run, collectors)
+        _execute_run(root, job_id, target, run, collectors, stage=stage)
 
 
 def _execute_run(
     root: Path,
-    campaign_id: str,
+    job_id: str,
     target: Target,
     run: RunSpec,
     collectors: CollectorConfig | dict | None = None,
+    stage: str | None = None,
 ) -> None:
+    if stage not in {None, "load", "destroy", "bench"}:
+        raise ValueError("stage must be one of: load, destroy, bench")
     run_dir = root / "runs" / run.run_id
-    campaign_dir = root / "runs" / "campaigns" / campaign_id
+    job_dir = root / "runs" / "jobs" / job_id
     run_dir.mkdir(parents=True, exist_ok=True)
     benchmark_parent_dir = run_dir / "benchmark"
     benchmark_parent_dir.mkdir(parents=True, exist_ok=True)
     _set_run_status(run_dir, "running", "prepare")
-    _update_progress(campaign_dir, run.target_id, "running", run.run_id, "prepare")
+    _update_job_state(job_dir, run.target_id, "running", run.run_id, "prepare")
 
     _prepare_benchmark_run_dir(root, target, run)
 
-    commands = [
-        ("runDatabaseBuild.sh", ["./runDatabaseBuild.sh", str(run.properties_path)]),
-        ("runBenchmark.sh", ["./runBenchmark.sh", str(run.properties_path)]),
-    ]
-    should_destroy = not run.skip_destroy
-    if run.skip_destroy:
+    commands = _stage_commands(stage, run)
+    should_destroy = stage is None and not run.skip_destroy
+    if stage is None and run.skip_destroy:
+        _set_run_status(run_dir, "running", "schema_probe")
+        _update_job_state(job_dir, run.target_id, "running", run.run_id, "schema_probe")
+        _append_timeline(job_dir, {"event": "phase_start", "run_id": run.run_id, "target": run.target_id, "phase": "schema_probe"})
         probe = _probe_tpcc_objects(target)
         _write_command_result(run_dir, "schema_probe", probe)
-        _append_timeline(campaign_dir, {"event": "schema_probe", "run_id": run.run_id, "target": run.target_id, "exit_code": probe.exit_code, "stdout": probe.stdout, "stderr": probe.stderr})
+        _append_timeline(job_dir, {"event": "schema_probe", "run_id": run.run_id, "target": run.target_id, "exit_code": probe.exit_code, "stdout": probe.stdout, "stderr": probe.stderr})
         if probe.exit_code != 0:
             last_error = _command_error_summary(probe)
             _set_run_status(run_dir, "failed", "schema_probe", last_error)
-            _mark_run_finished(campaign_dir, run.target_id, failed=True, last_error=last_error)
+            _mark_run_finished(job_dir, run.target_id, failed=True, last_error=last_error)
             return
         should_destroy = _tpcc_objects_exist(probe)
 
     if should_destroy:
         commands.insert(0, ("runDatabaseDestroy.sh", ["./runDatabaseDestroy.sh", str(run.properties_path)]))
-    else:
-        _append_timeline(campaign_dir, {"event": "phase_skipped", "run_id": run.run_id, "target": run.target_id, "phase": "runDatabaseDestroy.sh", "reason": "first_run_empty_schema"})
+    elif stage is None:
+        _append_timeline(job_dir, {"event": "phase_skipped", "run_id": run.run_id, "target": run.target_id, "phase": "runDatabaseDestroy.sh", "reason": "first_run_empty_schema"})
     collector_manager = _collector_manager(root, target, run, collectors)
     for phase, command in commands:
         _set_run_status(run_dir, "running", phase)
-        _update_progress(campaign_dir, run.target_id, "running", run.run_id, phase)
+        _update_job_state(job_dir, run.target_id, "running", run.run_id, phase)
+        _append_timeline(job_dir, {"event": "phase_start", "run_id": run.run_id, "target": run.target_id, "phase": phase})
         collector_error = None
         if phase in COLLECTED_PHASES:
             try:
                 collector_manager.start_phase(phase)
-                _append_timeline(campaign_dir, {"event": "collector_start", "run_id": run.run_id, "target": run.target_id, "phase": phase})
+                _append_timeline(job_dir, {"event": "collector_start", "run_id": run.run_id, "target": run.target_id, "phase": phase})
             except CollectorError as exc:
                 phase_error = f"{phase}: {exc}"
-                _append_timeline(campaign_dir, {"event": "collector_failed", "run_id": run.run_id, "target": run.target_id, "phase": phase, "error": str(exc)})
+                _append_timeline(job_dir, {"event": "collector_failed", "run_id": run.run_id, "target": run.target_id, "phase": phase, "error": str(exc)})
                 _set_run_status(run_dir, "failed", phase, phase_error)
-                _mark_run_finished(campaign_dir, run.target_id, failed=True, last_error=phase_error)
+                _mark_run_finished(job_dir, run.target_id, failed=True, last_error=phase_error)
                 return
             try:
                 result = _run_local(command, cwd=run.benchmark_run_dir, timeout=10800)
@@ -158,22 +167,41 @@ def _execute_run(
             finally:
                 try:
                     collector_manager.stop_phase(phase)
-                    _append_timeline(campaign_dir, {"event": "collector_stop", "run_id": run.run_id, "target": run.target_id, "phase": phase})
+                    _append_timeline(job_dir, {"event": "collector_stop", "run_id": run.run_id, "target": run.target_id, "phase": phase})
                 except CollectorError as exc:
                     collector_error = str(exc)
-                    _append_timeline(campaign_dir, {"event": "collector_failed", "run_id": run.run_id, "target": run.target_id, "phase": phase, "error": collector_error})
+                    _append_timeline(job_dir, {"event": "collector_failed", "run_id": run.run_id, "target": run.target_id, "phase": phase, "error": collector_error})
         else:
             result = _run_local(command, cwd=run.benchmark_run_dir, timeout=10800)
         _write_command_result(run_dir, phase, result)
-        _append_timeline(campaign_dir, {"event": "phase_done", "run_id": run.run_id, "target": run.target_id, "phase": phase, "exit_code": result.exit_code})
-        phase_error = _combine_phase_errors(_phase_failure(result), collector_error)
+        _append_timeline(job_dir, {"event": "phase_done", "run_id": run.run_id, "target": run.target_id, "phase": phase, "exit_code": result.exit_code})
+        phase_error = _combine_phase_errors(_phase_failure(phase, result), collector_error)
         if phase_error:
             _set_run_status(run_dir, "failed", phase, phase_error)
-            _mark_run_finished(campaign_dir, run.target_id, failed=True, last_error=phase_error)
+            _mark_run_finished(job_dir, run.target_id, failed=True, last_error=phase_error)
             return
 
     _set_run_status(run_dir, "success", "report")
-    _mark_run_finished(campaign_dir, run.target_id, failed=False)
+    _mark_run_finished(job_dir, run.target_id, failed=False)
+
+
+def _stage_commands(stage: str | None, run: RunSpec) -> list[tuple[str, list[str]]]:
+    commands = {
+        None: [
+            ("runDatabaseBuild.sh", ["./runDatabaseBuild.sh", str(run.properties_path)]),
+            ("runBenchmark.sh", ["./runBenchmark.sh", str(run.properties_path)]),
+        ],
+        "destroy": [
+            ("runDatabaseDestroy.sh", ["./runDatabaseDestroy.sh", str(run.properties_path)]),
+        ],
+        "load": [
+            ("runDatabaseBuild.sh", ["./runDatabaseBuild.sh", str(run.properties_path)]),
+        ],
+        "bench": [
+            ("runBenchmark.sh", ["./runBenchmark.sh", str(run.properties_path)]),
+        ],
+    }
+    return list(commands[stage])
 
 
 def _prepare_benchmark_run_dir(root: Path, target: Target, run: RunSpec) -> None:
@@ -404,13 +432,19 @@ def _ensure_text(value: str | bytes | None) -> str:
     return value
 
 
-def _phase_failure(result: CommandResult) -> str | None:
+def _phase_failure(phase: str, result: CommandResult) -> str | None:
     if result.exit_code != 0:
         return _command_error_summary(result)
+    if phase == "runBenchmark.sh" and _has_measured_tpmc(result):
+        return None
     fatal_line = _fatal_output_line(result)
     if fatal_line:
         return f"{result.command}: {fatal_line}"
     return None
+
+
+def _has_measured_tpmc(result: CommandResult) -> bool:
+    return bool(MEASURED_TPMC_PATTERN.search(result.stdout + "\n" + result.stderr))
 
 
 def _combine_phase_errors(command_error: str | None, collector_error: str | None) -> str | None:
@@ -443,49 +477,60 @@ def _command_error_summary(result: CommandResult) -> str:
     return f"{result.command}: exit code {result.exit_code}"
 
 
-def _set_campaign_status(campaign_dir: Path, status: str, last_error: str | None = None) -> None:
-    data = load_yaml(campaign_dir / "status.json") if (campaign_dir / "status.json").exists() else {}
+def _set_job_status(job_dir: Path, status: str, last_error: str | None = None) -> None:
+    data = load_yaml(job_dir / "status.json") if (job_dir / "status.json").exists() else {}
     data["status"] = status
     if last_error:
         data["last_error"] = last_error
     data["updated_at"] = datetime.now().isoformat()
-    write_json(campaign_dir / "status.json", data)
-    progress_path = campaign_dir / "progress.json"
-    if progress_path.exists():
-        progress = load_yaml(progress_path)
-        progress["status"] = status
+    write_json(job_dir / "status.json", data)
+    job_state_path = job_dir / "job.json"
+    if job_state_path.exists():
+        job_state = load_yaml(job_state_path)
+        job_state["status"] = status
         if last_error:
-            progress["last_error"] = last_error
-        write_json(progress_path, progress)
+            job_state["last_error"] = last_error
+        write_json(job_state_path, job_state)
 
 
 def _set_run_status(run_dir: Path, status: str, phase: str | None, last_error: str | None = None) -> None:
-    data = {"run_id": run_dir.name, "status": status, "phase": phase, "updated_at": datetime.now().isoformat()}
+    now = datetime.now().isoformat()
+    previous = load_yaml(run_dir / "status.json") if (run_dir / "status.json").exists() else {}
+    data = {"run_id": run_dir.name, "status": status, "phase": phase, "updated_at": now}
+    if status == "running" and phase:
+        if previous.get("status") == "running" and previous.get("phase") == phase and previous.get("phase_started_at"):
+            data["phase_started_at"] = previous["phase_started_at"]
+        else:
+            data["phase_started_at"] = now
+    elif previous.get("phase_started_at"):
+        data["phase_started_at"] = previous["phase_started_at"]
+    if status in {"success", "failed", "cancelled"}:
+        data["phase_finished_at"] = now
     if last_error:
         data["last_error"] = last_error
     write_json(run_dir / "status.json", data)
 
 
-def _update_progress(campaign_dir: Path, target_id: str, status: str, current_run: str | None, current_phase: str | None) -> None:
-    progress = load_yaml(campaign_dir / "progress.json")
-    for target in progress["targets"]:
+def _update_job_state(job_dir: Path, target_id: str, status: str, current_run: str | None, current_phase: str | None) -> None:
+    job_state = load_yaml(job_dir / "job.json")
+    for target in job_state["targets"]:
         if target["target_id"] == target_id:
             target["status"] = status
             target["current_run"] = current_run
             target["current_phase"] = current_phase
-    progress["running_runs"] = sum(1 for target in progress["targets"] if target.get("current_run"))
-    write_json(campaign_dir / "progress.json", progress)
+    job_state["running_runs"] = sum(1 for target in job_state["targets"] if target.get("current_run"))
+    write_json(job_dir / "job.json", job_state)
 
 
-def _mark_run_finished(campaign_dir: Path, target_id: str, failed: bool, last_error: str | None = None) -> None:
-    progress = load_yaml(campaign_dir / "progress.json")
-    progress["finished_runs"] = int(progress.get("finished_runs", 0)) + 1
-    progress["failed_runs"] = int(progress.get("failed_runs", 0)) + (1 if failed else 0)
-    progress["success_runs"] = int(progress.get("success_runs", 0)) + (0 if failed else 1)
-    progress["pending_runs"] = max(0, int(progress.get("pending_runs", 0)) - 1)
+def _mark_run_finished(job_dir: Path, target_id: str, failed: bool, last_error: str | None = None) -> None:
+    job_state = load_yaml(job_dir / "job.json")
+    job_state["finished_runs"] = int(job_state.get("finished_runs", 0)) + 1
+    job_state["failed_runs"] = int(job_state.get("failed_runs", 0)) + (1 if failed else 0)
+    job_state["success_runs"] = int(job_state.get("success_runs", 0)) + (0 if failed else 1)
+    job_state["pending_runs"] = max(0, int(job_state.get("pending_runs", 0)) - 1)
     if last_error:
-        progress["last_error"] = last_error
-    for target in progress["targets"]:
+        job_state["last_error"] = last_error
+    for target in job_state["targets"]:
         if target["target_id"] == target_id:
             target["finished_runs"] = int(target.get("finished_runs", 0)) + 1
             if failed:
@@ -498,13 +543,13 @@ def _mark_run_finished(campaign_dir: Path, target_id: str, failed: bool, last_er
                 target["status"] = "running"
             target["current_run"] = None
             target["current_phase"] = None
-    progress["running_runs"] = sum(1 for target in progress["targets"] if target.get("current_run"))
-    write_json(campaign_dir / "progress.json", progress)
+    job_state["running_runs"] = sum(1 for target in job_state["targets"] if target.get("current_run"))
+    write_json(job_dir / "job.json", job_state)
 
 
-def _append_timeline(campaign_dir: Path, event: dict) -> None:
+def _append_timeline(job_dir: Path, event: dict) -> None:
     event = {"time": datetime.now().isoformat(), **event}
-    with (campaign_dir / "timeline.jsonl").open("a", encoding="utf-8") as f:
+    with (job_dir / "timeline.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
 
 

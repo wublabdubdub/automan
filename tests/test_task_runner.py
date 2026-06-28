@@ -8,12 +8,13 @@ from pathlib import Path
 
 from automan_core.config import load_yaml
 import automan_core.task_runner as task_runner
-from automan_core.task_runner import CampaignFailedError
-from automan_core.task_runner import run_task_campaign
+from automan_core.task_runner import JobFailedError
+from automan_core.task_runner import load_task_definition
+from automan_core.task_runner import run_task_job
 
 
 class TaskRunnerTest(unittest.TestCase):
-    def test_run_task_plan_only_generates_manual_parameter_commands(self) -> None:
+    def test_run_task_plan_only_records_manual_parameter_commands(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -43,8 +44,6 @@ targets:
         name: postgres
         user: zhangchen
         password: secret
-      postgresql_conf: /home/12pg/data/postgresql.conf
-      restart_command: pg_ctl restart -D /home/12pg/data
     database_parameters:
       max_connections: "550"
       shared_buffers: 62GB
@@ -53,19 +52,60 @@ targets:
             )
 
             with redirect_stdout(io.StringIO()):
-                campaign_dir = run_task_campaign(root, task, plan_only=True)
+                job_dir = run_task_job(root, task, plan_only=True)
 
-            plan = load_yaml(campaign_dir / "resolved-plan.yaml")
+            plan = load_yaml(job_dir / "resolved-plan.yaml")
             self.assertEqual(plan["targets"][0]["id"], "pg12_tpcc")
             self.assertFalse(plan["targets"][0]["apply_params"])
             self.assertEqual(plan["targets"][0]["parameter_application"], "manual_only")
-            commands = (campaign_dir / "manual-parameter-commands.sh").read_text(encoding="utf-8")
-            self.assertIn("postgresql.conf", commands)
-            self.assertIn("max_connections = '550'", commands)
-            self.assertIn("pg_ctl restart -D /home/12pg/data", commands)
+            commands = "\n".join(plan["targets"][0]["manual_parameter_commands"])
+            self.assertIn("ALTER SYSTEM SET max_connections = '550';", commands)
+            self.assertNotIn("postgresql.conf", commands)
+            self.assertNotIn("pg_ctl restart", commands)
+            self.assertFalse((job_dir / "manual-parameter-commands.sh").exists())
             self.assertEqual(len(plan["runs"]), 2)
 
-    def test_run_task_campaign_raises_when_execution_marks_campaign_failed(self) -> None:
+    def test_legacy_ymatrix_empty_database_parameters_auto_fills_recommendations(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _copy_minimal_repo_files(repo, root, extra_files=["configs/database-profiles/ymatrix/heap-master-only.yaml"])
+            task = root / "task.yaml"
+            task.write_text(
+                """
+benchmark: tpcc
+matrix:
+  warehouses: [100]
+  terminals: [100]
+  load_workers: 16
+  run_mins: 15
+targets:
+  - id: ymatrix_heap
+    profile: ymatrix_heap_master_only
+    connection:
+      config_ssh:
+        user: mxadmin
+      database:
+        host: 172.16.100.62
+        port: 5432
+        name: tpcc
+        user: zhangchen
+    host_facts:
+      cpu_threads: 128
+      memory_gb: 96
+    database_parameters:
+""",
+                encoding="utf-8",
+            )
+
+            definition = load_task_definition(root, task)
+
+        params = definition.targets[0].accepted_params
+        self.assertEqual(params["max_connections"], "1024")
+        self.assertEqual(params["shared_buffers"], "24GB")
+        self.assertEqual(params["work_mem"], "24MB")
+
+    def test_run_task_job_raises_when_execution_marks_job_failed(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -97,32 +137,85 @@ targets:
 """,
                 encoding="utf-8",
             )
-            old_execute = task_runner.execute_campaign
+            old_execute = task_runner.execute_job
             try:
-                def fake_execute(root, campaign_id, targets, runs, collectors):
-                    campaign_dir = root / "runs" / "campaigns" / campaign_id
-                    load_yaml(campaign_dir / "status.json")
+                def fake_execute(root, job_id, targets, runs, collectors, stage=None):
+                    job_dir = root / "runs" / "jobs" / job_id
+                    load_yaml(job_dir / "status.json")
                     from automan_core.config import write_json
-                    write_json(campaign_dir / "status.json", {"campaign_id": campaign_id, "status": "failed"})
-                    progress = load_yaml(campaign_dir / "progress.json")
+                    write_json(job_dir / "status.json", {"job_id": job_id, "status": "failed"})
+                    progress = load_yaml(job_dir / "job.json")
                     progress["status"] = "failed"
                     progress["last_error"] = "runDatabaseBuild.sh: ERROR: Must create extension matrixts before using mars3"
-                    write_json(campaign_dir / "progress.json", progress)
+                    write_json(job_dir / "job.json", progress)
 
-                task_runner.execute_campaign = fake_execute
-                with self.assertRaises(CampaignFailedError) as caught:
+                task_runner.execute_job = fake_execute
+                with self.assertRaises(JobFailedError) as caught:
                     with redirect_stdout(io.StringIO()):
-                        run_task_campaign(root, task, plan_only=False)
+                        run_task_job(root, task, plan_only=False)
             finally:
-                task_runner.execute_campaign = old_execute
+                task_runner.execute_job = old_execute
 
             self.assertIn("matrixts", str(caught.exception))
 
+    def test_run_task_job_passes_stage_to_executor(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _copy_minimal_repo_files(repo, root)
+            task = root / "task.yaml"
+            task.write_text(
+                """
+benchmark: tpcc
+execution:
+  host: 172.16.100.143
+  workdir: /root/automan
+matrix:
+  warehouses: [10]
+  terminals: [20]
+  load_workers: 8
+  run_mins: 1
+targets:
+  - id: pg12_tpcc
+    profile: postgresql_heap_single_node
+    connection:
+      config_ssh:
+        host: 192.168.100.29
+        user: 12pg
+      database:
+        host: 192.168.100.29
+        port: 5232
+        name: postgres
+        user: zhangchen
+""",
+                encoding="utf-8",
+            )
+            captured = {}
+            old_execute = task_runner.execute_job
+            try:
+                def fake_execute(root, job_id, targets, runs, collectors, stage=None):
+                    captured["stage"] = stage
+                    job_dir = root / "runs" / "jobs" / job_id
+                    from automan_core.config import write_json
+                    write_json(job_dir / "status.json", {"job_id": job_id, "status": "success"})
+                    progress = load_yaml(job_dir / "job.json")
+                    progress["status"] = "success"
+                    write_json(job_dir / "job.json", progress)
 
-def _copy_minimal_repo_files(src: Path, dst: Path) -> None:
+                task_runner.execute_job = fake_execute
+                with redirect_stdout(io.StringIO()):
+                    run_task_job(root, task, plan_only=False, stage="bench")
+            finally:
+                task_runner.execute_job = old_execute
+
+            self.assertEqual(captured["stage"], "bench")
+
+
+def _copy_minimal_repo_files(src: Path, dst: Path, extra_files: list[str] | None = None) -> None:
     for relative in [
         "configs/database-profiles/postgresql/heap-single-node.yaml",
         "benchmarks/tpcc/benchmarksql/props.template",
+        *(extra_files or []),
     ]:
         target = dst / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -131,3 +224,5 @@ def _copy_minimal_repo_files(src: Path, dst: Path) -> None:
 
 if __name__ == "__main__":
     unittest.main()
+
+

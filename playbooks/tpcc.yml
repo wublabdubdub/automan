@@ -1,5 +1,5 @@
 ---
-- name: Run Automan TPC-C campaign
+- name: Run Automan TPC-C job
   hosts: "{{ automan_hosts | default('bench') }}"
   gather_facts: false
   vars:

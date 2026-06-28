@@ -12,6 +12,7 @@
     that:
       - automan_root_stat.stat.isdir | default(false)
     fail_msg: "automan root {{ automan_root }} does not exist on the benchmark host."
+    quiet: true
   tags:
     - check
     - bench_tool
@@ -67,7 +68,10 @@
     that:
       - item.stat.exists
     fail_msg: "missing BenchmarkSQL script {{ item.item }} under {{ benchmarksql_dir }}/run."
+    quiet: true
   loop: "{{ benchmarksql_scripts.results }}"
+  loop_control:
+    label: "{{ item.item }}"
   tags:
     - check
     - bench_tool
@@ -87,6 +91,7 @@
     that:
       - benchmarksql_dist.matched | int > 0
     fail_msg: "BenchmarkSQL dist jar is missing. Build it before running TPC-C."
+    quiet: true
   tags:
     - check
     - bench_tool
@@ -99,7 +104,7 @@
   loop:
     - work
     - runs
-    - runs/campaigns
+    - runs/jobs
   tags:
     - check
     - bench_tool

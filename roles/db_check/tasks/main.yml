@@ -10,7 +10,47 @@
       - "{{ automan_config_file }}"
   args:
     chdir: "{{ automan_root }}"
+  register: db_check_result
   changed_when: false
+  failed_when: false
+  tags:
+    - check
+    - db_check
+
+- name: Show formatted Automan check failure
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ db_check_result.stdout_lines | default([]) }}"
+  loop_control:
+    label: ""
+  when:
+    - db_check_result.rc != 0
+    - db_check_result.stdout_lines | default([]) | length > 0
+  tags:
+    - check
+    - db_check
+
+- name: Show formatted Automan check stderr
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ db_check_result.stderr_lines | default([]) }}"
+  loop_control:
+    label: ""
+  when:
+    - db_check_result.rc != 0
+    - db_check_result.stderr_lines | default([]) | length > 0
+  tags:
+    - check
+    - db_check
+
+- name: Fail after formatted Automan check output
+  ansible.builtin.fail:
+    msg: >-
+      {{ (db_check_result.stdout | default('') | regex_search('(?m)^\[FAIL\].*')) | default('Automan check failed', true) }}
+      {% set hints = db_check_result.stdout | default('') | regex_findall('(?m)^\[HINT\].*') %}
+      {% if hints | length > 0 %} | {{ hints[-3:] | join(' | ') }}{% endif %}
+      (rc={{ db_check_result.rc }}; command: {{ automan_python }} -m automan_core check -i {{ automan_config_file }})
+  when: db_check_result.rc != 0
   tags:
     - check
     - db_check

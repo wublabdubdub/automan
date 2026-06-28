@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import tempfile
@@ -13,7 +13,7 @@ class ReportTest(unittest.TestCase):
     def test_generate_report_summarizes_archive_and_failures(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            campaign_dir = root / "runs/campaigns/campaign"
+            job_dir = root / "runs/jobs/job"
             run_dir = root / "runs/run1"
             log_dir = run_dir / "logs"
             result_dir = run_dir / "benchmark/result"
@@ -25,13 +25,11 @@ class ReportTest(unittest.TestCase):
             perf_dir.mkdir(parents=True)
             (root / "templates").mkdir()
             (root / "templates/report.md.j2").write_text((Path(__file__).resolve().parents[1] / "templates/report.md.j2").read_text(encoding="utf-8"), encoding="utf-8")
-            manual_path = campaign_dir / "manual-parameter-commands.sh"
             write_yaml(
-                campaign_dir / "resolved-plan.yaml",
+                job_dir / "resolved-plan.yaml",
                 {
-                    "campaign_id": "campaign",
+                    "job_id": "job",
                     "matrix": {"warehouses": [100], "terminals": [100], "load_workers": 8, "run_mins": 30},
-                    "archive": {"manual_parameter_commands_path": str(manual_path)},
                     "targets": [
                         {
                             "id": "pg",
@@ -44,7 +42,10 @@ class ReportTest(unittest.TestCase):
                                 "db_password": "***",
                             },
                             "ddl_profile": "postgresql_heap_single_node",
-                            "manual_parameter_commands_path": str(manual_path),
+                            "manual_parameter_commands": [
+                                "psql -c \"ALTER SYSTEM SET max_connections = '128';\"",
+                                "psql -c 'show max_connections;'",
+                            ],
                         }
                     ],
                     "runs": [
@@ -63,9 +64,9 @@ class ReportTest(unittest.TestCase):
                 },
             )
             write_json(
-                campaign_dir / "progress.json",
+                job_dir / "job.json",
                 {
-                    "campaign_id": "campaign",
+                    "job_id": "job",
                     "status": "failed",
                     "last_error": "runBenchmark.sh: ERROR: password authentication failed",
                     "targets": [{"target_id": "pg", "last_error": "ERROR: password authentication failed"}],
@@ -125,14 +126,14 @@ class ReportTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            report_path = generate_report(root, "campaign")
+            report_path = generate_report(root, "job")
 
             report = report_path.read_text(encoding="utf-8")
-            agent_context = json.loads((campaign_dir / "report/agent-context.json").read_text(encoding="utf-8"))
-            self.assertEqual(report_path, campaign_dir / "report/report.md")
-            self.assertIn("## Campaign", report)
-            self.assertIn("manual_parameter_commands:", report)
-            self.assertIn(str(manual_path), report)
+            agent_context = json.loads((job_dir / "report/agent-context.json").read_text(encoding="utf-8"))
+            self.assertEqual(report_path, job_dir / "report/report.md")
+            self.assertIn("## Job", report)
+            self.assertIn("manual_parameter_commands: recorded in `resolved-plan.yaml`", report)
+            self.assertIn("manual_parameter_commands: 2 command(s)", report)
             self.assertIn("password: ***", report)
             self.assertIn("179.55", report)
             self.assertIn("329.17", report)
@@ -165,9 +166,11 @@ class ReportTest(unittest.TestCase):
                 },
             )
             self.assertIn("plan", agent_context)
-            self.assertIn("progress", agent_context)
+            self.assertIn("job_state", agent_context)
             self.assertTrue(agent_context["failures"])
 
 
 if __name__ == "__main__":
     unittest.main()
+
+

@@ -30,15 +30,15 @@ targets:
     # profile: YMatrix heap master only profile。
     profile: ymatrix_heap_master_only
 
-    # connection: 连接信息。automan 只用 database 连接做压测，不执行 gpconfig/mxstop。
+    # connection: 连接信息。automan 只用 database 连接做压测，不执行 gpconfig。
     connection:
-      # config_ssh: 配置机信息，仅用于生成参数修改命令和记录。
+      # config_ssh: 远程采集检查和采集用 SSH 信息。
       config_ssh:
-        # host: YMatrix master 配置机 IP。
-        host: 172.16.100.29
-        # port: SSH 端口。
-        port: 22
-        # user: 手工执行 gpconfig/mxstop 的 OS 用户。
+        # host: 可选；省略时复用 database.host。仅当 SSH 主机不同于数据库监听地址时填写。
+        # host: 172.16.100.29
+        # port: 可选；省略时默认 22。
+        # port: 22
+        # user: 远程采集检查和采集用的 OS 用户。
         user: zhangchen
         # password: 不建议写明文；需要时可临时填写，计划文件会脱敏。
         password: ""
@@ -60,13 +60,10 @@ targets:
 
       # gpconfig_command: 手工参数修改命令路径。
       gpconfig_command: gpconfig
-      # restart_command: 手工应用参数后的重启命令，automan 不会执行。
-      restart_command: mxstop -afr
-
     # database_parameters: 推荐或确认后的 YMatrix 参数。automan 只生成手工命令，不执行。
     database_parameters:
       # max_connections: 最大连接数，应大于最大 terminals 并留出管理连接余量。
-      max_connections: "1050"
+      # max_connections: "1050"
 
   # id: mars3 target 的唯一标识。
   - id: ymatrix_mars3_master_only
@@ -75,13 +72,13 @@ targets:
 
     # connection: 可与 heap target 相同。
     connection:
-      # config_ssh: 配置机信息，仅用于生成参数修改命令和记录。
+      # config_ssh: 远程采集检查和采集用 SSH 信息。
       config_ssh:
-        # host: YMatrix master 配置机 IP。
-        host: 172.16.100.29
-        # port: SSH 端口。
-        port: 22
-        # user: 手工执行 gpconfig/mxstop 的 OS 用户。
+        # host: 可选；省略时复用 database.host。仅当 SSH 主机不同于数据库监听地址时填写。
+        # host: 172.16.100.29
+        # port: 可选；省略时默认 22。
+        # port: 22
+        # user: 远程采集检查和采集用的 OS 用户。
         user: zhangchen
         # password: 不建议写明文；需要时可临时填写，计划文件会脱敏。
         password: ""
@@ -103,13 +100,10 @@ targets:
 
       # gpconfig_command: 手工参数修改命令路径。
       gpconfig_command: gpconfig
-      # restart_command: 手工应用参数后的重启命令，automan 不会执行。
-      restart_command: mxstop -afr
-
     # database_parameters: 推荐或确认后的 YMatrix 参数。automan 只生成手工命令，不执行。
     database_parameters:
       # max_connections: 最大连接数，应大于最大 terminals 并留出管理连接余量。
-      max_connections: "1050"
+      # max_connections: "1050"
 
     # mars3_options: MARS3 建表参数，会渲染到 tableCreates.sql。
     mars3_options:

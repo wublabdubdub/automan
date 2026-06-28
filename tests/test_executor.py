@@ -45,7 +45,7 @@ class ExecutorPreparationTest(unittest.TestCase):
             self.assertEqual(result.stdout, "partial stdout\n")
             self.assertEqual(result.stderr, "partial stderr\n")
 
-    def test_host_queue_exception_records_campaign_last_error(self) -> None:
+    def test_host_queue_exception_records_job_last_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root, target, run = self._run_fixture(Path(tmp), skip_destroy=True)
             old_execution = executor._preflight_execution_host
@@ -60,15 +60,15 @@ class ExecutorPreparationTest(unittest.TestCase):
 
                 executor._execute_host_queue = fail_host_queue
 
-                executor.execute_campaign(root, "campaign", [target], [run])
+                executor.execute_job(root, "Job", [target], [run])
             finally:
                 executor._preflight_execution_host = old_execution
                 executor._preflight_benchmarksql = old_benchmark
                 executor._execute_host_queue = old_host_queue
 
-            campaign_dir = root / "runs/campaigns/campaign"
-            status = load_yaml(campaign_dir / "status.json")
-            progress = load_yaml(campaign_dir / "progress.json")
+            job_dir = root / "runs/jobs/Job"
+            status = load_yaml(job_dir / "status.json")
+            progress = load_yaml(job_dir / "job.json")
             self.assertEqual(status["status"], "failed")
             self.assertIn("data must be str", status["last_error"])
             self.assertIn("data must be str", progress["last_error"])
@@ -180,7 +180,7 @@ DISTRIBUTED MASTERONLY;
                     return CommandResult(" ".join(command), 0, "", "")
 
                 executor._run_local = fake_run
-                _execute_run(root, "campaign", target, run)
+                _execute_run(root, "Job", target, run)
             finally:
                 executor._prepare_benchmark_run_dir = old_prepare
                 executor._probe_tpcc_objects = old_probe
@@ -210,13 +210,78 @@ DISTRIBUTED MASTERONLY;
                     return CommandResult(" ".join(command), 0, "", "")
 
                 executor._run_local = fake_run
-                _execute_run(root, "campaign", target, run)
+                _execute_run(root, "Job", target, run)
             finally:
                 executor._prepare_benchmark_run_dir = old_prepare
                 executor._probe_tpcc_objects = old_probe
                 executor._run_local = old_run_local
 
             self.assertEqual(commands, ["./runDatabaseDestroy.sh", "./runDatabaseBuild.sh", "./runBenchmark.sh"])
+
+    def test_stage_destroy_runs_only_destroy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, target, run = self._run_fixture(Path(tmp), skip_destroy=True)
+            commands: list[str] = []
+            old_prepare = executor._prepare_benchmark_run_dir
+            old_run_local = executor._run_local
+            try:
+                executor._prepare_benchmark_run_dir = lambda root, target, run: None
+
+                def fake_run(command, cwd, timeout, env=None):
+                    commands.append(command[0])
+                    return CommandResult(" ".join(command), 0, "", "")
+
+                executor._run_local = fake_run
+                _execute_run(root, "Job", target, run, stage="destroy")
+            finally:
+                executor._prepare_benchmark_run_dir = old_prepare
+                executor._run_local = old_run_local
+
+            self.assertEqual(commands, ["./runDatabaseDestroy.sh"])
+            status = load_yaml(root / "runs" / run.run_id / "status.json")
+            self.assertEqual(status["status"], "success")
+
+    def test_stage_load_runs_only_build_without_destroy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, target, run = self._run_fixture(Path(tmp), skip_destroy=False)
+            commands: list[str] = []
+            old_prepare = executor._prepare_benchmark_run_dir
+            old_run_local = executor._run_local
+            try:
+                executor._prepare_benchmark_run_dir = lambda root, target, run: None
+
+                def fake_run(command, cwd, timeout, env=None):
+                    commands.append(command[0])
+                    return CommandResult(" ".join(command), 0, "", "")
+
+                executor._run_local = fake_run
+                _execute_run(root, "Job", target, run, stage="load")
+            finally:
+                executor._prepare_benchmark_run_dir = old_prepare
+                executor._run_local = old_run_local
+
+            self.assertEqual(commands, ["./runDatabaseBuild.sh"])
+
+    def test_stage_bench_runs_only_benchmark(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, target, run = self._run_fixture(Path(tmp), skip_destroy=False)
+            commands: list[str] = []
+            old_prepare = executor._prepare_benchmark_run_dir
+            old_run_local = executor._run_local
+            try:
+                executor._prepare_benchmark_run_dir = lambda root, target, run: None
+
+                def fake_run(command, cwd, timeout, env=None):
+                    commands.append(command[0])
+                    return CommandResult(" ".join(command), 0, "", "")
+
+                executor._run_local = fake_run
+                _execute_run(root, "Job", target, run, stage="bench")
+            finally:
+                executor._prepare_benchmark_run_dir = old_prepare
+                executor._run_local = old_run_local
+
+            self.assertEqual(commands, ["./runBenchmark.sh"])
 
     def test_benchmark_parent_dir_exists_before_run_benchmark(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -234,7 +299,7 @@ DISTRIBUTED MASTERONLY;
                     return CommandResult(" ".join(command), 0, "", "")
 
                 executor._run_local = fake_run
-                _execute_run(root, "campaign", target, run)
+                _execute_run(root, "Job", target, run)
             finally:
                 executor._prepare_benchmark_run_dir = old_prepare
                 executor._probe_tpcc_objects = old_probe
@@ -261,14 +326,14 @@ DISTRIBUTED MASTERONLY;
                     return CommandResult(" ".join(command), 0, "", "")
 
                 executor._run_local = fake_run
-                _execute_run(root, "campaign", target, run)
+                _execute_run(root, "Job", target, run)
             finally:
                 executor._prepare_benchmark_run_dir = old_prepare
                 executor._probe_tpcc_objects = old_probe
                 executor._run_local = old_run_local
 
             status = load_yaml(root / "runs" / run.run_id / "status.json")
-            progress = load_yaml(root / "runs/campaigns/campaign/progress.json")
+            progress = load_yaml(root / "runs/jobs/Job/job.json")
             self.assertEqual(status["status"], "failed")
             self.assertEqual(status["phase"], "runBenchmark.sh")
             self.assertIn("password authentication failed", status["last_error"])
@@ -291,7 +356,7 @@ DISTRIBUTED MASTERONLY;
                     return CommandResult(" ".join(command), 0, "", "")
 
                 executor._run_local = fake_run
-                _execute_run(root, "campaign", target, run)
+                _execute_run(root, "Job", target, run)
             finally:
                 executor._prepare_benchmark_run_dir = old_prepare
                 executor._probe_tpcc_objects = old_probe
@@ -300,6 +365,45 @@ DISTRIBUTED MASTERONLY;
             status = load_yaml(root / "runs" / run.run_id / "status.json")
             self.assertEqual(status["status"], "failed")
             self.assertIn("Invalid number of terminals", status["last_error"])
+
+    def test_run_benchmark_with_error_output_and_measured_tpmc_succeeds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, target, run = self._run_fixture(Path(tmp), skip_destroy=True)
+            old_prepare = executor._prepare_benchmark_run_dir
+            old_probe = executor._probe_tpcc_objects
+            old_run_local = executor._run_local
+            try:
+                executor._prepare_benchmark_run_dir = lambda root, target, run: None
+                executor._probe_tpcc_objects = lambda target: CommandResult("probe", 0, "0\n", "")
+
+                def fake_run(command, cwd, timeout, env=None):
+                    if command[0] == "./runBenchmark.sh":
+                        return CommandResult(
+                            " ".join(command),
+                            0,
+                            "\n".join(
+                                [
+                                    '14:52:29,694 [Thread-63] ERROR  jTPCCTData : ERROR: duplicate key value violates unique constraint "bmsql_oorder_pkey"',
+                                    "14:52:29,695 [Thread-63] INFO   jTPCC : Term-00, Measured tpmC (NewOrders) = 808.13",
+                                    "14:52:29,695 [Thread-63] INFO   jTPCC : Term-00, Measured tpmTOTAL = 1805.54",
+                                ]
+                            ),
+                            "",
+                        )
+                    return CommandResult(" ".join(command), 0, "", "")
+
+                executor._run_local = fake_run
+                _execute_run(root, "Job", target, run)
+            finally:
+                executor._prepare_benchmark_run_dir = old_prepare
+                executor._probe_tpcc_objects = old_probe
+                executor._run_local = old_run_local
+
+            status = load_yaml(root / "runs" / run.run_id / "status.json")
+            progress = load_yaml(root / "runs/jobs/Job/job.json")
+            self.assertEqual(status["status"], "success")
+            self.assertEqual(progress["success_runs"], 1)
+            self.assertEqual(progress["failed_runs"], 0)
 
     def test_collectors_wrap_run_benchmark_phase(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -331,7 +435,7 @@ DISTRIBUTED MASTERONLY;
                     return CommandResult(" ".join(command), 0, "", "")
 
                 executor._run_local = fake_run
-                _execute_run(root, "campaign", target, run)
+                _execute_run(root, "Job", target, run)
             finally:
                 executor._prepare_benchmark_run_dir = old_prepare
                 executor._probe_tpcc_objects = old_probe
@@ -379,7 +483,7 @@ DISTRIBUTED MASTERONLY;
                     return CommandResult(" ".join(command), 0, "", "")
 
                 executor._run_local = fake_run
-                _execute_run(root, "campaign", target, run)
+                _execute_run(root, "Job", target, run)
             finally:
                 executor._prepare_benchmark_run_dir = old_prepare
                 executor._probe_tpcc_objects = old_probe
@@ -387,7 +491,7 @@ DISTRIBUTED MASTERONLY;
                 executor.CollectorManager = old_collector_manager
 
             status = load_yaml(root / "runs" / run.run_id / "status.json")
-            progress = load_yaml(root / "runs/campaigns/campaign/progress.json")
+            progress = load_yaml(root / "runs/jobs/Job/job.json")
             self.assertEqual(status["status"], "failed")
             self.assertEqual(status["phase"], "runBenchmark.sh")
             self.assertIn("collector error", status["last_error"])
@@ -398,18 +502,18 @@ DISTRIBUTED MASTERONLY;
             root = Path(tmp)
             profile = self._profile()
             target = Target(profile, self._connection(), {}, {"max_connections": "128"}, False, {}, manual_parameter_commands=["pg_ctl restart -D /data"])
-            campaign_dir = root / "runs/campaigns/campaign"
-            campaign_dir.mkdir(parents=True)
+            job_dir = root / "runs/jobs/Job"
+            job_dir.mkdir(parents=True)
             write_json(
-                campaign_dir / "progress.json",
+                job_dir / "job.json",
                 {
-                    "campaign_id": "campaign",
+                    "job_id": "Job",
                     "status": "planned",
                     "targets": [{"target_id": profile.id, "status": "pending", "current_run": None, "current_phase": None}],
                     "failed_runs": 0,
                 },
             )
-            write_json(campaign_dir / "status.json", {"campaign_id": "campaign", "status": "planned"})
+            write_json(job_dir / "status.json", {"job_id": "Job", "status": "planned"})
 
             old_execution = executor._preflight_execution_host
             old_benchmark = executor._preflight_benchmarksql
@@ -417,14 +521,14 @@ DISTRIBUTED MASTERONLY;
                 executor._preflight_execution_host = lambda targets: CommandResult("execution", 0, "", "")
                 executor._preflight_benchmarksql = lambda root: CommandResult("benchmarksql", 0, "", "")
 
-                executor.execute_campaign(root, "campaign", [target], [])
+                executor.execute_job(root, "Job", [target], [])
             finally:
                 executor._preflight_execution_host = old_execution
                 executor._preflight_benchmarksql = old_benchmark
 
-            status = load_yaml(campaign_dir / "status.json")
+            status = load_yaml(job_dir / "status.json")
             self.assertEqual(status["status"], "success")
-            timeline = (campaign_dir / "timeline.jsonl").read_text(encoding="utf-8")
+            timeline = (job_dir / "timeline.jsonl").read_text(encoding="utf-8")
             self.assertIn("manual_parameter_commands_declared", timeline)
 
     def _run_fixture(self, root: Path, skip_destroy: bool) -> tuple[Path, Target, RunSpec]:
@@ -444,12 +548,12 @@ DISTRIBUTED MASTERONLY;
             benchmark_run_dir=root / "work/run1/benchmarksql/run",
             skip_destroy=skip_destroy,
         )
-        campaign_dir = root / "runs/campaigns/campaign"
-        campaign_dir.mkdir(parents=True)
+        job_dir = root / "runs/jobs/Job"
+        job_dir.mkdir(parents=True)
         write_json(
-            campaign_dir / "progress.json",
+            job_dir / "job.json",
             {
-                "campaign_id": "campaign",
+                "job_id": "Job",
                 "status": "running",
                 "total_runs": 1,
                 "finished_runs": 0,
@@ -513,3 +617,4 @@ DISTRIBUTED MASTERONLY;
 
 if __name__ == "__main__":
     unittest.main()
+

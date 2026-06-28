@@ -105,6 +105,8 @@ class Target:
     mars3_options: dict[str, Any] = field(default_factory=dict)
     manual_parameter_commands: list[str] = field(default_factory=list)
     target_id: str | None = None
+    explicit_params: dict[str, str] = field(default_factory=dict)
+    manual_parameter_commands_auto_generated: bool = True
 
     @property
     def id(self) -> str:

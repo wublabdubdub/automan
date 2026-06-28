@@ -6,7 +6,7 @@
     mode: "0755"
   loop:
     - runs
-    - runs/campaigns
+    - runs/jobs
     - work/tpcc
   tags:
     - tpcc_prepare
@@ -24,6 +24,42 @@
     chdir: "{{ automan_root }}"
   register: tpcc_prepare_result
   changed_when: false
+  failed_when: false
+  tags:
+    - tpcc_prepare
+
+- name: Show formatted TPC-C validation failure
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ tpcc_prepare_result.stdout_lines | default([]) }}"
+  loop_control:
+    label: ""
+  when:
+    - tpcc_prepare_result.rc != 0
+    - tpcc_prepare_result.stdout_lines | default([]) | length > 0
+  tags:
+    - tpcc_prepare
+
+- name: Show formatted TPC-C validation stderr
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ tpcc_prepare_result.stderr_lines | default([]) }}"
+  loop_control:
+    label: ""
+  when:
+    - tpcc_prepare_result.rc != 0
+    - tpcc_prepare_result.stderr_lines | default([]) | length > 0
+  tags:
+    - tpcc_prepare
+
+- name: Fail after formatted TPC-C validation output
+  ansible.builtin.fail:
+    msg: >-
+      {{ (tpcc_prepare_result.stdout | default('') | regex_search('(?m)^\[FAIL\].*')) | default('TPC-C inventory validation failed', true) }}
+      {% set hints = tpcc_prepare_result.stdout | default('') | regex_findall('(?m)^\[HINT\].*') %}
+      {% if hints | length > 0 %} | {{ hints[-3:] | join(' | ') }}{% endif %}
+      (rc={{ tpcc_prepare_result.rc }}; command: {{ automan_python }} -m automan_core validate -i {{ automan_config_file }})
+  when: tpcc_prepare_result.rc != 0
   tags:
     - tpcc_prepare
 

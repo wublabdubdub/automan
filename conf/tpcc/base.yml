@@ -1,0 +1,41 @@
+# TPC-C inventory base. Compose targets with:
+#   ./configure -c pg,ym-heap -o automan.yml
+all:
+  vars:
+    benchmark: tpcc
+    job_id:
+
+    # Shared TPC-C matrix for every selected target.
+    tpcc_warehouses: [100]
+    tpcc_terminals: [100, 500]
+    tpcc_load_workers: 32
+    tpcc_run_mins: 15
+
+    # Collector gate. `automan check` verifies these tools and permissions before a run.
+    # Defaults: system metrics every 1 second; perf record at 99 Hz; benchmark phase only.
+    collectors:
+      enabled: true
+      system:
+        enabled: true
+        interval_seconds: 1
+        host_roles: [database]
+        tools: [vmstat, iostat, pidstat, mpstat]
+      perf:
+        enabled: true
+        phases: [runBenchmark.sh]
+        host_roles: [database]
+        frequency: 99
+        call_graph: fp
+        record_scope: system
+
+  children:
+    # Execution host: automan and BenchmarkSQL run here.
+    bench:
+      hosts:
+        bench01:
+          ansible_host: 172.16.100.143
+          ansible_port: 22
+          ansible_user: root
+          ansible_password: ""
+          ansible_connection: local
+          automan_workdir: /root/automan

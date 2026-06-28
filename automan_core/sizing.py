@@ -26,34 +26,35 @@ def probe_host(ssh: SSHClient) -> dict[str, str | int]:
 def recommend_params(profile: DatabaseProfile, facts: dict[str, str | int], max_terminals: int) -> dict[str, str]:
     cpu_threads = int(facts.get("cpu_threads", 16))
     memory_gb = int(facts.get("memory_gb", 64))
-    max_connections = max(max_terminals + 50, cpu_threads * 8)
+    params = _postgresql_tpcc_base_params(cpu_threads, memory_gb, max_terminals)
 
     if profile.database_type == "postgresql":
-        shared_buffers = max(1, int(memory_gb * 0.25))
-        effective_cache_size = max(1, int(memory_gb * 0.7))
-        work_mem_mb = max(4, min(256, int(memory_gb * 1024 / max(max_connections, 1) / 4)))
-        maintenance_work_mem_gb = max(1, min(16, int(memory_gb * 0.05)))
-        return {
-            "max_connections": str(max_connections),
-            "shared_buffers": f"{shared_buffers}GB",
-            "effective_cache_size": f"{effective_cache_size}GB",
-            "work_mem": f"{work_mem_mb}MB",
-            "maintenance_work_mem": f"{maintenance_work_mem_gb}GB",
-            "checkpoint_timeout": "30min",
-            "max_wal_size": "64GB",
-        }
+        params["checkpoint_timeout"] = "30min"
+        return params
 
-    ymatrix_max_connections = max(max_terminals + 50, 128)
+    params.update(
+        {
+            "checkpoint_completion_target": "0.9",
+            "min_wal_size": "8GB",
+            "vacuum_cost_limit": "10000",
+        }
+    )
+    return params
+
+
+def _postgresql_tpcc_base_params(cpu_threads: int, memory_gb: int, max_terminals: int) -> dict[str, str]:
+    max_connections = max(max_terminals + 50, cpu_threads * 8)
+    shared_buffers = max(1, int(memory_gb * 0.25))
+    effective_cache_size = max(1, int(memory_gb * 0.7))
+    work_mem_mb = max(4, min(256, int(memory_gb * 1024 / max(max_connections, 1) / 4)))
+    maintenance_work_mem_gb = max(1, min(16, int(memory_gb * 0.05)))
     return {
-        "max_connections": str(ymatrix_max_connections),
-        "shared_buffers": f"{_ceil_to_multiple(max(1, int(memory_gb * 0.25)), 8)}GB",
-        "effective_cache_size": f"{_ceil_to_multiple(max(1, int(memory_gb * 0.50)), 8)}GB",
-        "work_mem": "4MB",
-        "maintenance_work_mem": "2GB",
-        "checkpoint_completion_target": "0.9",
+        "max_connections": str(max_connections),
+        "shared_buffers": f"{shared_buffers}GB",
+        "effective_cache_size": f"{effective_cache_size}GB",
+        "work_mem": f"{work_mem_mb}MB",
+        "maintenance_work_mem": f"{maintenance_work_mem_gb}GB",
         "max_wal_size": "64GB",
-        "min_wal_size": "8GB",
-        "vacuum_cost_limit": "10000",
     }
 
 
@@ -61,6 +62,3 @@ def recommended_load_workers(facts: dict[str, str | int]) -> int:
     cpu_threads = int(facts.get("cpu_threads", 16))
     return max(4, min(64, int(cpu_threads / 2)))
 
-
-def _ceil_to_multiple(value: int, multiple: int) -> int:
-    return ((value + multiple - 1) // multiple) * multiple

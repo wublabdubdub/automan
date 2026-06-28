@@ -1,10 +1,39 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 from pathlib import Path
 
 
 class Mars3DDLTest(unittest.TestCase):
+    def test_ymatrix_heap_profile_creates_all_tables_master_only(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        ddl = root / "benchmarks/tpcc/benchmarksql/ddl/ymatrix_heap_master_only/sql.common/tableCreates.sql"
+        text = ddl.read_text(encoding="utf-8")
+        tables = (
+            "bmsql_config",
+            "bmsql_warehouse",
+            "bmsql_district",
+            "bmsql_customer",
+            "bmsql_history",
+            "bmsql_new_order",
+            "bmsql_oorder",
+            "bmsql_order_line",
+            "bmsql_item",
+            "bmsql_stock",
+        )
+
+        self.assertEqual(text.count("USING heap"), len(tables))
+        self.assertEqual(text.count("DISTRIBUTED MASTERONLY"), len(tables))
+        self.assertNotIn("DISTRIBUTED BY", text.upper())
+        for table in tables:
+            with self.subTest(table=table):
+                start = text.find(f"create table {table}")
+                self.assertNotEqual(start, -1)
+                end = text.find("create table", start + 1)
+                segment = text[start:] if end < 0 else text[start:end]
+                self.assertIn("USING heap", segment)
+                self.assertIn("DISTRIBUTED MASTERONLY", segment)
+
     def test_mars3_table_creates_use_confirmed_options(self) -> None:
         root = Path(__file__).resolve().parents[1]
         ddl = root / "benchmarks/tpcc/benchmarksql/ddl/ymatrix_mars3_master_only/sql.common/tableCreates.sql"
@@ -88,3 +117,5 @@ class Mars3DDLTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+

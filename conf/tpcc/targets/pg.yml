@@ -1,0 +1,40 @@
+# PostgreSQL heap single-node target fragment.
+all:
+  children:
+    pg:
+      vars:
+        db_type: postgresql
+        storage_engine: heap
+        test_mode: single_node
+
+        db_host: 192.168.100.29
+        db_port: 5232
+        db_name: postgres
+        db_user: zhangchen
+        db_password: ""
+
+        # SSH metadata for collector checks and remote metric collection.
+        # config_host is optional; when omitted, db_host is reused.
+        config_user: 12pg
+        config_password: ""
+        config_workdir: /home/12pg/automan
+
+        # host_facts is only used by `./automan param --offline`.
+        # Normal `./automan param` probes config_host/db_host live before
+        # rendering memory-sensitive ALTER SYSTEM commands.
+        # host_facts:
+        #   cpu_threads: 64
+        #   memory_gb: 64
+
+        database_parameters: {}
+        # Optional overrides:
+        # database_parameters:
+        #   max_connections: "550"
+        #   shared_buffers: 16GB
+        #   effective_cache_size: 44GB
+        #   work_mem: 29MB
+        #   maintenance_work_mem: 3GB
+        #   checkpoint_timeout: 30min
+        #   max_wal_size: 64GB
+
+        manual_parameter_commands: []

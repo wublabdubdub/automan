@@ -16,13 +16,21 @@ Run from the remote path:
 
 ```bash
 cd /root/automan
-./configure -c tpcc/pg -o automan.yml
-./bin/validate -i automan.yml
+./configure -c pg -o automan.yml
 ./automan param -i automan.yml
 ./check.yml -i automan.yml
 ./tpcc.yml -i automan.yml
 ./automan progress
+./automan list
 ./report.yml -i automan.yml
+```
+
+Single-stage execution is available through the root wrapper:
+
+```bash
+./tpcc.yml -i automan.yml -s destroy
+./tpcc.yml -i automan.yml -s load
+./tpcc.yml -i automan.yml -s bench
 ```
 
 The execution host must provide:
@@ -35,7 +43,7 @@ psql
 Python packages from requirements.txt
 ```
 
-BenchmarkSQL must be built on Linux before a campaign starts. From the source workspace, run:
+BenchmarkSQL must be built on Linux before a job starts. From the source workspace, run:
 
 ```bash
 python -m automan_core tools build-benchmarksql --host 172.16.100.143 --user root --remote-workdir /root/automan
@@ -48,19 +56,28 @@ The command runs `ant` on the Linux execution host and downloads the generated `
 `automan` no longer asks for interactive database parameters. The preferred contract is a Pigsty-style inventory under `conf/`:
 
 ```bash
-./configure -c tpcc/pg -o automan.yml
+./configure -c pg -o automan.yml
 ./automan run -i automan.yml --plan-only
 ./automan run -i automan.yml
 ```
 
-Current templates:
+Current configure aliases:
 
 ```text
-conf/tpcc/pg.yml
-conf/tpcc/ymatrix-heap.yml
-conf/tpcc/ymatrix-mars3.yml
-conf/tpcc/pg-vs-ymatrix.yml
+pg        PostgreSQL heap single node
+ym-heap   YMatrix heap master only
+ym-mars3  YMatrix mars3 master only
 ```
+
+Multiple targets can be composed into one job:
+
+```bash
+./configure -c pg,ym-heap -o automan.yml
+./configure -c pg,ym-heap,ym-mars3 -o automan.yml
+```
+
+Maintained inputs are `conf/tpcc/base.yml` and `conf/tpcc/targets/*.yml`.
+Combination templates are not maintained as separate files.
 
 Legacy task YAML remains available during migration:
 
@@ -81,7 +98,7 @@ optional manual parameter commands
 MARS3 DDL options when needed
 ```
 
-Every template field carries an inline YAML comment. Parameters such as `max_connections`, `shared_buffers`, `gpconfig_command`, `restart_command`, and MARS3 options must be reviewed in `conf/tpcc/*.yml` before execution.
+Every template field carries an inline YAML comment. Parameters such as `max_connections`, `shared_buffers`, `gpconfig_command`, and MARS3 options must be reviewed in `conf/tpcc/base.yml` and `conf/tpcc/targets/*.yml` before execution. `config_host` is optional and defaults to `db_host`; set it only when SSH must use a different host than the database connection.
 
 ## Database Profiles
 
@@ -97,20 +114,12 @@ ymatrix_mars3_master_only
 
 `automan` and its Ansible playbooks do not modify database parameters, do not run `gpconfig`, do not edit `postgresql.conf`, and do not restart databases.
 
-For each campaign it writes:
-
-```text
-runs/campaigns/<campaign_id>/manual-parameter-commands.sh
-```
-
-This file is generated from `database_parameters` unless `manual_parameter_commands` is explicitly set in the inventory.
+`./automan param -i automan.yml` prints the commands directly to the terminal. It does not create a shell script or a pre-review job. The command list is generated from `database_parameters` unless `manual_parameter_commands` is explicitly set in the inventory.
 
 PostgreSQL commands include:
 
 ```text
-backup postgresql.conf
-write automan managed settings block
-run the declared restart command
+ALTER SYSTEM SET <name> = <value>
 show each changed parameter
 ```
 
@@ -118,15 +127,14 @@ YMatrix commands include:
 
 ```text
 gpconfig -c <name> -v <value>
-the declared restart command, usually mxstop -afr
 show each changed parameter
 ```
 
-The user must execute and verify these commands manually before starting the actual pressure test. `./automan param -i automan.yml` creates a pre-review campaign for these commands; the later `./tpcc.yml -i automan.yml` run creates the real benchmark campaign.
+The user must execute and verify these commands manually before starting the actual pressure test. Reload or restart the database manually when a changed parameter requires it. The later `./tpcc.yml -i automan.yml` run creates the benchmark job.
 
 ## Execution Boundary
 
-`automan` only performs the actual TPC-C pressure test. It uses the database connection in the inventory to run BenchmarkSQL and schema probes. It does not SSH to the config host during benchmark execution.
+`automan` performs the TPC-C pressure test and, when collectors are enabled for the `database` role, uses SSH to check and collect database-host metrics. The SSH target is `config_host` when set, otherwise `db_host`. Current SSH checks require `config_user` and `config_password`; key and agent authentication are disabled.
 
 `automan run` must be started on the configured execution host; the runner checks local host markers before doing destructive work.
 
@@ -226,6 +234,18 @@ Skipping build is never allowed. Destroy is skipped only when the first-run sche
 
 All maintained TPC-C `tableDrops.sql` profiles use `drop ... if exists`, so destroy is idempotent against partially cleaned schemas.
 
+When `./tpcc.yml -s <stage>` is used, automan skips the normal full sequence and
+runs only the selected BenchmarkSQL phase for each matrix entry:
+
+```text
+destroy -> runDatabaseDestroy.sh
+load    -> runDatabaseBuild.sh
+bench   -> runBenchmark.sh
+```
+
+`load` does not implicitly destroy existing objects. Run `-s destroy` explicitly
+first when a clean load is required. `bench` assumes data has already been loaded.
+
 Each run gets an isolated BenchmarkSQL working copy:
 
 ```text
@@ -246,30 +266,75 @@ Targets on different database hosts run in parallel.
 
 Targets on the same database host run serially in the user-selected order.
 
-## Progress
+## Running Progress
 
-Show the latest campaign:
+Show the current TPC-C job progress:
 
 ```bash
 ./automan progress
 ```
 
-Watch progress:
+Watch progress with the default 5 second refresh:
 
 ```bash
-./automan progress --watch --interval 5
+./automan progress --watch
 ```
 
-Inspect a specific campaign:
+Watch progress with an explicit refresh interval:
 
 ```bash
-./automan progress --campaign <campaign_id>
+./automan progress --watch 5
 ```
 
-Progress reads:
+Inspect one job explicitly:
+
+```bash
+./automan progress --job <job_id>
+```
+
+`progress` auto-detects the single running job. If multiple jobs are running, it prints their job ids and requires `--job`. The output uses Pigsty-style status lines and maps TPC-C phases to short actions:
 
 ```text
-runs/campaigns/<campaign_id>/progress.json
+schema_probe           action=probe
+runDatabaseDestroy.sh  action=destroy
+runDatabaseBuild.sh    action=load
+runBenchmark.sh        action=test
+report                 action=report
+```
+
+When the active phase is `runBenchmark.sh`, progress also prints elapsed time, expected time, remaining time, and percentage based on `run_mins`.
+
+## Completed Results
+
+Show completed run results from all jobs:
+
+```bash
+./automan list
+```
+
+Show completed run results for one job:
+
+```bash
+./automan list --job <job_id>
+```
+
+`list` only prints runs that have finished successfully and already produced parseable BenchmarkSQL performance output. If a job has finished 100 terminals but 500 and 1000 terminals are still pending or failed, the 100-terminal result is still shown. Each row includes a stable `ID`, derived from the run id by removing the job prefix, such as `pg31-w100-c500`.
+
+Delete one whole job and all referenced run/work artifacts:
+
+```bash
+./automan delete <job_id>
+./automan delete <job_id> -f
+```
+
+Without `-f`, delete requires typing `DELETE`. Deleting removes `runs/jobs/<job_id>/`, every `runs/<run_id>/` referenced by the job plan, every referenced `work/tpcc/benchmarksql/<run_id>/` workspace, and exact-match collector/archive directories for that job id.
+
+List reads:
+
+```text
+runs/jobs/<job_id>/job.json
+runs/jobs/<job_id>/resolved-plan.yaml
+runs/<run_id>/benchmark/result/
 ```
 
 It does not participate in execution.

@@ -1,5 +1,5 @@
 ---
-- name: Archive latest campaign inputs and outputs
+- name: Archive latest job inputs and outputs
   ansible.builtin.shell: |
     set -euo pipefail
     archive_id="$(date +%Y%m%d-%H%M%S)-ansible"
@@ -8,10 +8,10 @@
     if [ -f {{ automan_config_file | quote }} ]; then
       cp -f {{ automan_config_file | quote }} "$archive_dir/automan-input.yml"
     fi
-    latest="$(ls -1dt runs/campaigns/* 2>/dev/null | head -n 1 || true)"
+    latest="$(ls -1dt runs/jobs/* 2>/dev/null | head -n 1 || true)"
     if [ -n "$latest" ]; then
-      mkdir -p "$archive_dir/campaign"
-      cp -a "$latest/." "$archive_dir/campaign/"
+      mkdir -p "$archive_dir/job"
+      cp -a "$latest/." "$archive_dir/job/"
     fi
     echo "$archive_dir"
   args:

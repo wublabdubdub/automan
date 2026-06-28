@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from automan_core.config import load_yaml
-from automan_core.executor import execute_campaign
+from automan_core.executor import execute_job
 from automan_core.models import (
     CollectorConfig,
     ConnectionInfo,
@@ -15,9 +15,11 @@ from automan_core.models import (
     TpccMatrix,
 )
 from automan_core.parameter_commands import build_manual_parameter_commands
-from automan_core.plan import build_run_specs, new_campaign_id, write_campaign_files
+from automan_core.plan import build_run_specs, new_job_id, write_job_files
 from automan_core.profiles import find_profile, load_database_profiles
 from automan_core.sizing import recommend_params
+
+AUTO_PARAMETER_DATABASE_TYPES = {"postgresql", "ymatrix"}
 
 
 @dataclass(frozen=True)
@@ -26,7 +28,7 @@ class TaskDefinition:
     matrix: TpccMatrix
     targets: list[Target]
     collectors: CollectorConfig = field(default_factory=CollectorConfig)
-    campaign_id: str | None = None
+    job_id: str | None = None
     source_path: Path | None = None
     style: str = "legacy"
 
@@ -37,7 +39,7 @@ class ValidationMessage:
     text: str
 
 
-class CampaignFailedError(RuntimeError):
+class JobFailedError(RuntimeError):
     pass
 
 
@@ -124,28 +126,33 @@ def validate_task_definition(task: TaskDefinition) -> list[ValidationMessage]:
     return messages
 
 
-def run_task_campaign(root: Path, task_path: Path, plan_only: bool) -> Path:
+def run_task_job(root: Path, task_path: Path, plan_only: bool, stage: str | None = None) -> Path:
+    if stage not in {None, "load", "destroy", "bench"}:
+        raise ValueError("stage must be one of: load, destroy, bench")
     task = load_task_definition(root, task_path)
 
-    campaign_id = str(task.campaign_id or new_campaign_id())
-    runs = build_run_specs(root, campaign_id, task.targets, task.matrix)
-    campaign_dir = write_campaign_files(
+    job_id = str(task.job_id or new_job_id())
+    runs = build_run_specs(root, job_id, task.targets, task.matrix)
+    job_dir = write_job_files(
         root,
-        campaign_id,
+        job_id,
         task.targets,
         task.matrix,
         runs,
         _merged_mars3_options(task.targets),
         asdict(task.collectors),
+        stage=stage,
     )
-    _print_task_plan(campaign_dir, task.targets, task.matrix, runs)
+    _print_task_plan(job_dir, task.targets, task.matrix, runs)
 
     if not plan_only:
-        execute_campaign(root, campaign_id, task.targets, runs, task.collectors)
-        _raise_if_campaign_failed(campaign_dir)
-        print("[ OK ] campaign finished")
-        print("[HINT] run ./automan progress to inspect status")
-    return campaign_dir
+        execute_job(root, job_id, task.targets, runs, task.collectors, stage=stage)
+        _raise_if_job_failed(job_dir)
+        print("[ OK ] job finished")
+        print(f"[HINT] run ./automan list --job {job_dir.name} to inspect completed results")
+    return job_dir
+
+
 
 
 def _load_legacy_task(root: Path, task_path: Path, raw: dict[str, Any], profiles: dict) -> TaskDefinition:
@@ -159,7 +166,7 @@ def _load_legacy_task(root: Path, task_path: Path, raw: dict[str, Any], profiles
         matrix=matrix,
         targets=targets,
         collectors=_load_collectors(raw.get("collectors"), task_path),
-        campaign_id=raw.get("campaign_id"),
+        job_id=raw.get("job_id"),
         source_path=task_path,
         style="legacy",
     )
@@ -197,7 +204,7 @@ def _load_inventory_task(root: Path, task_path: Path, raw: dict[str, Any], profi
         matrix=matrix,
         targets=targets,
         collectors=_load_collectors(all_vars.get("collectors"), task_path),
-        campaign_id=all_vars.get("campaign_id"),
+        job_id=all_vars.get("job_id"),
         source_path=task_path,
         style="inventory",
     )
@@ -238,13 +245,16 @@ def _load_legacy_target(raw: dict[str, Any], profiles: dict, execution: dict[str
     profile = profiles[profile_id]
     connection = _load_connection(raw.get("connection", {}), execution)
     host_facts = dict(raw.get("host_facts", {}))
+    explicit_params = {str(key): str(value) for key, value in dict(raw.get("database_parameters") or {}).items()}
     params = _effective_database_parameters(
         profile,
-        {str(key): str(value) for key, value in raw.get("database_parameters", {}).items()},
+        explicit_params,
         host_facts,
         max(matrix.terminals),
     )
-    manual_commands = list(raw.get("manual_parameter_commands") or build_manual_parameter_commands(profile, connection, params))
+    manual_commands_raw = raw.get("manual_parameter_commands")
+    manual_commands_auto_generated = not manual_commands_raw
+    manual_commands = list(manual_commands_raw or build_manual_parameter_commands(profile, connection, params))
     return Target(
         profile=profile,
         connection=connection,
@@ -255,6 +265,8 @@ def _load_legacy_target(raw: dict[str, Any], profiles: dict, execution: dict[str
         mars3_options=dict(raw.get("mars3_options", {})),
         manual_parameter_commands=manual_commands,
         target_id=str(raw.get("id") or profile.id),
+        explicit_params=explicit_params,
+        manual_parameter_commands_auto_generated=manual_commands_auto_generated,
     )
 
 
@@ -271,13 +283,16 @@ def _load_inventory_target(
     profile = _inventory_profile(merged, profiles)
     connection = _load_inventory_connection(host_name, merged, execution)
     host_facts = _host_facts(merged)
+    explicit_params = {str(key): str(value) for key, value in dict(merged.get("database_parameters") or {}).items()}
     params = _effective_database_parameters(
         profile,
-        {str(key): str(value) for key, value in dict(merged.get("database_parameters", {}) or {}).items()},
+        explicit_params,
         host_facts,
         max(matrix.terminals),
     )
-    manual_commands = list(merged.get("manual_parameter_commands") or build_manual_parameter_commands(profile, connection, params))
+    manual_commands_raw = merged.get("manual_parameter_commands")
+    manual_commands_auto_generated = not manual_commands_raw
+    manual_commands = list(manual_commands_raw or build_manual_parameter_commands(profile, connection, params))
     mars3_options = dict(profile.mars3_defaults if profile.storage_engine == "mars3" else {})
     mars3_options.update(dict(merged.get("mars3_options", {}) or {}))
     return Target(
@@ -290,6 +305,8 @@ def _load_inventory_target(
         mars3_options=mars3_options,
         manual_parameter_commands=manual_commands,
         target_id=str(merged.get("target_id") or group_name),
+        explicit_params=explicit_params,
+        manual_parameter_commands_auto_generated=manual_commands_auto_generated,
     )
 
 
@@ -371,11 +388,37 @@ def _effective_database_parameters(
     host_facts: dict[str, str | int],
     max_terminals: int,
 ) -> dict[str, str]:
-    if profile.database_type != "ymatrix":
+    params = recommended_database_parameters(profile, host_facts, max_terminals)
+    if not params:
         return explicit_params
-    params = recommend_params(profile, host_facts, max_terminals)
     params.update(explicit_params)
     return params
+
+
+def recommended_database_parameters(profile: Any, host_facts: dict[str, str | int], max_terminals: int) -> dict[str, str]:
+    if profile.database_type not in AUTO_PARAMETER_DATABASE_TYPES:
+        return {}
+    return recommend_params(profile, host_facts, max_terminals)
+
+
+def live_parameter_conflicts(target: Target, host_facts: dict[str, str | int], max_terminals: int) -> dict[str, tuple[str, str]]:
+    recommended = recommended_database_parameters(target.profile, host_facts, max_terminals)
+    conflicts = {}
+    for key, explicit_value in target.explicit_params.items():
+        recommended_value = recommended.get(key)
+        if recommended_value is not None and explicit_value != recommended_value:
+            conflicts[key] = (explicit_value, recommended_value)
+    return conflicts
+
+
+def refresh_auto_parameter_commands(target: Target, host_facts: dict[str, str | int], max_terminals: int) -> None:
+    if not target.manual_parameter_commands_auto_generated:
+        return
+    params = _effective_database_parameters(target.profile, target.explicit_params, host_facts, max_terminals)
+    target.host_facts = host_facts
+    target.recommended_params = params
+    target.accepted_params = params
+    target.manual_parameter_commands = build_manual_parameter_commands(target.profile, target.connection, params)
 
 
 def _merged_mars3_options(targets: list[Target]) -> dict[str, Any]:
@@ -385,14 +428,14 @@ def _merged_mars3_options(targets: list[Target]) -> dict[str, Any]:
     return {}
 
 
-def _print_task_plan(campaign_dir: Path, targets: list[Target], matrix: TpccMatrix, runs: list) -> None:
-    print(f"[ OK ] campaign planned: {campaign_dir}")
+def _print_task_plan(job_dir: Path, targets: list[Target], matrix: TpccMatrix, runs: list) -> None:
+    print(f"[ OK ] job planned: {job_dir}")
     print(f"[ OK ] targets: {len(targets)}")
     for target in targets:
         print(f"[HINT] target {target.id}: {target.profile.display_name}")
         print(f"[HINT] database {target.connection.db_host}:{target.connection.db_port}/{target.connection.db_name}")
         if target.manual_parameter_commands:
-            print("[HINT] manual parameter commands: generated")
+            print("[HINT] manual parameter commands: recorded in resolved-plan.yaml")
     print(
         "[ OK ] TPC-C matrix: "
         f"warehouses={','.join(map(str, matrix.warehouses))} "
@@ -400,18 +443,17 @@ def _print_task_plan(campaign_dir: Path, targets: list[Target], matrix: TpccMatr
         f"loadWorkers={matrix.load_workers} runMins={matrix.run_mins}"
     )
     print(f"[ OK ] total runs: {len(runs)}")
-    print(f"[HINT] manual parameter commands: {campaign_dir / 'manual-parameter-commands.sh'}")
 
 
-def _raise_if_campaign_failed(campaign_dir: Path) -> None:
-    status = load_yaml(campaign_dir / "status.json")
+def _raise_if_job_failed(job_dir: Path) -> None:
+    status = load_yaml(job_dir / "status.json")
     if status.get("status") != "failed":
         return
-    progress = load_yaml(campaign_dir / "progress.json")
-    last_error = progress.get("last_error") or status.get("last_error") or "unknown campaign failure"
-    print(f"[FAIL] campaign failed: {last_error}")
-    print(f"[HINT] inspect progress: ./automan progress --campaign {campaign_dir.name}")
-    raise CampaignFailedError(str(last_error))
+    job_state = load_yaml(job_dir / "job.json")
+    last_error = job_state.get("last_error") or status.get("last_error") or "unknown job failure"
+    print(f"[FAIL] job failed: {last_error}")
+    print(f"[HINT] inspect logs under {job_dir}")
+    raise JobFailedError(str(last_error))
 
 
 def _mapping(value: Any, name: str) -> dict[str, Any]:

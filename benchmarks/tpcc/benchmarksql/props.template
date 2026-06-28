@@ -5,23 +5,42 @@ user=${user}
 password=${password}
 
 warehouses=${warehouses}
+useWarehouseFrom=${useWarehouseFrom}
+useWarehouseTo=${useWarehouseTo}
 loadWorkers=${load_workers}
 
 terminals=${terminals}
 // To run specified transactions per terminal, runMins must equal zero.
-runTxnsPerTerminal=0
+runTxnsPerTerminal=${runTxnsPerTerminal}
 // To run for specified minutes, runTxnsPerTerminal must equal zero.
 runMins=${run_minutes}
 // Number of total transactions per minute.
-limitTxnsPerMin=${limit_txns_per_min}
+limitTxnsPerMin=${limitTxnsPerMin}
 
-terminalWarehouseFixed=false
-useStoredProcedures=false
+monkeys=${monkeys}
+sutThreads=${sutThreads}
+maxDeliveryBGThreads=${maxDeliveryBGThreads}
+maxDeliveryBGPerWarehouse=${maxDeliveryBGPerWarehouse}
+rampupMins=${rampupMins}
+rampupSUTMins=${rampupSUTMins}
+rampupTerminalMins=${rampupTerminalMins}
+reportIntervalSecs=${reportIntervalSecs}
+resultIntervalSecs=${resultIntervalSecs}
+restartSUTThreadProbability=${restartSUTThreadProbability}
+keyingTimeMultiplier=${keyingTimeMultiplier}
+thinkTimeMultiplier=${thinkTimeMultiplier}
+terminalMultiplier=${terminalMultiplier}
+traceTerminalIO=${traceTerminalIO}
 
-newOrderWeight=45
-paymentWeight=43
-orderStatusWeight=4
-deliveryWeight=4
-stockLevelWeight=4
+terminalWarehouseFixed=${terminalWarehouseFixed}
+useStoredProcedures=${useStoredProcedures}
+
+paymentWeight=${paymentWeight}
+orderStatusWeight=${orderStatusWeight}
+deliveryWeight=${deliveryWeight}
+stockLevelWeight=${stockLevelWeight}
+newOrderWeight=${newOrderWeight}
+rollbackPercent=${rollbackPercent}
 
 resultDirectory=${result_directory}
+${benchmarksql_extra_properties}

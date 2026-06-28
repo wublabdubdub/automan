@@ -26,5 +26,3 @@ database_type:
   config_apply:
     method: gpconfig
     gpconfig_command: gpconfig
-    restart_command: "mxstop -afr"
-

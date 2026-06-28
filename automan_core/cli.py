@@ -1,15 +1,58 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import shutil
 from pathlib import Path
+from typing import Callable, Dict, Iterable, Union
 
 from automan_core.checks import check_task_readiness
-from automan_core.cleanup import cleanup_tpcc
+from automan_core.config import load_yaml, write_yaml
+from automan_core.delete_results import delete_job
+from automan_core.list_results import show_completed_results
+from automan_core.models import Target
 from automan_core.progress import show_progress
-from automan_core.report import generate_report, latest_campaign_id
-from automan_core.task_runner import CampaignFailedError, load_task_definition, run_task_campaign, validate_task_definition
+from automan_core.report import generate_report, latest_job_id
+from automan_core.sizing import probe_host
+from automan_core.ssh import SSHClient
+from automan_core.task_runner import (
+    AUTO_PARAMETER_DATABASE_TYPES,
+    JobFailedError,
+    live_parameter_conflicts,
+    load_task_definition,
+    refresh_auto_parameter_commands,
+    run_task_job,
+    validate_task_definition,
+)
 from automan_core.tooling import build_benchmarksql_on_linux, prompt_remote_execution_host
+
+
+CONFIG_ALIASES: dict[str, tuple[str, ...]] = {
+    "pg": ("pg",),
+    "postgres": ("pg",),
+    "postgresql": ("pg",),
+    "tpcc/pg": ("pg",),
+    "tpcc/postgres": ("pg",),
+    "tpcc/postgresql": ("pg",),
+    "ym-heap": ("ym-heap",),
+    "ymatrix-heap": ("ym-heap",),
+    "ymatrix_heap": ("ym-heap",),
+    "ym-heap-master-only": ("ym-heap",),
+    "ymatrix-heap-master-only": ("ym-heap",),
+    "tpcc/ym-heap": ("ym-heap",),
+    "tpcc/ymatrix-heap": ("ym-heap",),
+    "ym-mars3": ("ym-mars3",),
+    "ymatrix-mars3": ("ym-mars3",),
+    "ymatrix_mars3": ("ym-mars3",),
+    "ym-mars3-master-only": ("ym-mars3",),
+    "ymatrix-mars3-master-only": ("ym-mars3",),
+    "tpcc/ym-mars3": ("ym-mars3",),
+    "tpcc/ymatrix-mars3": ("ym-mars3",),
+    "tpcc/pg-vs-ymatrix": ("pg", "ym-heap", "ym-mars3"),
+    "pg-vs-ymatrix": ("pg", "ym-heap", "ym-mars3"),
+}
+
+CONFIG_TARGETS = ("pg", "ym-heap", "ym-mars3")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -24,27 +67,32 @@ def build_parser() -> argparse.ArgumentParser:
 
     param_parser = subparsers.add_parser("param", help="render manual DB parameter commands only")
     param_parser.add_argument("-i", "--inventory", required=True, help="inventory/config YAML path")
+    param_parser.add_argument("--offline", action="store_true", help="use configured host_facts instead of probing target hosts")
 
-    plan_parser = subparsers.add_parser("plan", help="render a campaign plan without executing benchmark runs")
+    plan_parser = subparsers.add_parser("plan", help="render a job plan without executing benchmark runs")
     plan_parser.add_argument("-i", "--inventory", required=True, help="inventory/config YAML path")
 
-    run_parser = subparsers.add_parser("run", help="start a TPC-C campaign from inventory or legacy task YAML")
+    run_parser = subparsers.add_parser("run", help="start a TPC-C job from inventory or legacy task YAML")
     run_source = run_parser.add_mutually_exclusive_group(required=True)
     run_source.add_argument("-i", "--inventory", help="inventory/config YAML path")
     run_source.add_argument("--task", help="legacy task YAML path")
-    run_parser.add_argument("--plan-only", action="store_true", help="write the campaign plan without executing")
+    run_parser.add_argument("--plan-only", action="store_true", help="write the job plan without executing")
+    run_parser.add_argument("--stage", choices=["load", "destroy", "bench"], help="run only one TPC-C stage")
 
-    report_parser = subparsers.add_parser("report", help="generate Markdown report for a campaign")
+    report_parser = subparsers.add_parser("report", help="generate Markdown report for a job")
     report_parser.add_argument("-i", "--inventory", help="inventory/config YAML path; accepted for playbook compatibility")
-    report_parser.add_argument("--campaign", help="campaign id; defaults to latest campaign")
+    report_parser.add_argument("--job", help="job id; defaults to latest job")
 
-    cleanup_parser = subparsers.add_parser("cleanup", help="drop bmsql_%% TPC-C objects for inventory targets")
-    cleanup_parser.add_argument("-i", "--inventory", required=True, help="inventory/config YAML path")
+    progress_parser = subparsers.add_parser("progress", help="show current TPC-C job progress")
+    progress_parser.add_argument("--job", help="job id; defaults to the running job")
+    progress_parser.add_argument("--watch", nargs="?", const=5, type=int, help="refresh every N seconds; default is 5")
 
-    progress_parser = subparsers.add_parser("progress", help="show campaign progress")
-    progress_parser.add_argument("--campaign", help="campaign id to inspect")
-    progress_parser.add_argument("--watch", action="store_true", help="refresh until the campaign finishes")
-    progress_parser.add_argument("--interval", type=int, default=5, help="watch refresh interval seconds")
+    list_parser = subparsers.add_parser("list", help="list completed benchmark results")
+    list_parser.add_argument("--job", help="only list completed results for this job")
+
+    delete_parser = subparsers.add_parser("delete", help="delete one job and all referenced run/work artifacts")
+    delete_parser.add_argument("job_id", help="job id under runs/jobs")
+    delete_parser.add_argument("-f", "--force", action="store_true", help="delete without typing DELETE")
 
     tools_parser = subparsers.add_parser("tools", help="manage external benchmark tools")
     tools_subparsers = tools_parser.add_subparsers(dest="tools_command", required=True)
@@ -72,36 +120,45 @@ def main() -> None:
         if failures:
             raise SystemExit(1)
     elif args.command == "param":
-        campaign_dir = run_task_campaign(root=root, task_path=Path(args.inventory), plan_only=True)
-        print_status("OK", f"manual parameter commands: {campaign_dir / 'manual-parameter-commands.sh'}")
-        print_status("HINT", "review and execute the generated script manually; automan never applies DB parameters")
+        failures = render_param_commands(root, Path(args.inventory), offline=args.offline)
+        if failures:
+            raise SystemExit(failures)
     elif args.command == "plan":
-        campaign_dir = run_task_campaign(root=root, task_path=Path(args.inventory), plan_only=True)
-        print_status("OK", f"campaign plan: {campaign_dir}")
+        job_dir = run_task_job(root=root, task_path=Path(args.inventory), plan_only=True)
+        print_status("OK", f"job plan: {job_dir}")
     elif args.command == "run":
         source = Path(args.inventory or args.task)
         try:
-            run_task_campaign(root=root, task_path=source, plan_only=args.plan_only)
-        except CampaignFailedError:
+            run_task_job(root=root, task_path=source, plan_only=args.plan_only, stage=args.stage)
+        except JobFailedError:
             raise SystemExit(1)
     elif args.command == "report":
-        campaign_id = args.campaign or latest_campaign_id(root)
-        if not campaign_id:
-            print_status("FAIL", "no campaign found under runs/campaigns")
+        job_id = args.job or latest_job_id(root)
+        if not job_id:
+            print_status("FAIL", "no job found under runs/jobs")
             raise SystemExit(1)
         try:
-            report_path = generate_report(root, campaign_id)
+            report_path = generate_report(root, job_id)
         except FileNotFoundError as exc:
-            print_status("FAIL", f"campaign {campaign_id} is missing required file: {exc.filename}")
+            print_status("FAIL", f"job {job_id} is missing required file: {exc.filename}")
             raise SystemExit(1) from exc
         print_status("OK", f"report: {report_path}")
-    elif args.command == "cleanup":
-        failures = cleanup_tpcc(root, Path(args.inventory))
+    elif args.command == "list":
+        failures = show_completed_results(root=root, job_id=args.job)
         if failures:
-            raise SystemExit(1)
+            raise SystemExit(failures)
+    elif args.command == "delete":
+        try:
+            failures = delete_job(root=root, job_id=args.job_id, force=args.force)
+        except ValueError as exc:
+            print_status("FAIL", str(exc))
+            raise SystemExit(1) from exc
+        if failures:
+            raise SystemExit(failures)
     elif args.command == "progress":
-        print_status("OK", "showing campaign progress")
-        show_progress(root=root, campaign_id=args.campaign, watch=args.watch, interval=args.interval)
+        failures = show_progress(root=root, job_id=args.job, watch_seconds=args.watch)
+        if failures:
+            raise SystemExit(failures)
     elif args.command == "tools" and args.tools_command == "build-benchmarksql":
         remote = prompt_remote_execution_host(args)
         results = build_benchmarksql_on_linux(root=root, remote=remote)
@@ -117,20 +174,30 @@ def main() -> None:
 
 def configure_main() -> None:
     parser = argparse.ArgumentParser(prog="configure")
-    parser.add_argument("-c", "--config", required=True, help="template name under conf/, such as tpcc/pg")
+    parser.add_argument("-c", "--config", required=True, help="target alias list such as pg, ym-heap, or pg,ym-heap")
     parser.add_argument("-o", "--output", default="automan.yml", help="output path")
     args = parser.parse_args()
 
     root = Path.cwd()
-    template = _template_path(root, args.config)
     output = root / args.output
-    if not template.exists():
-        print_status("FAIL", f"template not found: {template}")
+    try:
+        aliases = _configure_aliases(root, args.config)
+    except ValueError as exc:
+        print_status("FAIL", str(exc))
         raise SystemExit(1)
     output.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(template, output)
-    print_status("OK", f"configured {args.config} -> {output}")
-    print_status("HINT", f"next: ./bin/validate -i {args.output}")
+
+    if aliases:
+        inventory = _compose_tpcc_inventory(root, aliases)
+        write_yaml(output, inventory)
+        target_names = ", ".join(_configured_target_names(inventory))
+        print_status("OK", f"configured targets: {', '.join(aliases)} -> {output}")
+        print_status("OK", f"inventory targets: {target_names}")
+    else:
+        template = _template_path(root, args.config)
+        shutil.copyfile(template, output)
+        print_status("OK", f"configured {args.config} -> {output}")
+    print_status("HINT", f"next: ./check.yml -i {args.output}")
 
 
 def validate_inventory(root: Path, inventory: Path) -> int:
@@ -165,6 +232,92 @@ def check_inventory(root: Path, inventory: Path) -> int:
     return failures
 
 
+FactProvider = Callable[[Target], Dict[str, Union[str, int]]]
+
+
+def render_param_commands(root: Path, inventory: Path, offline: bool = False, fact_provider: FactProvider | None = None) -> int:
+    try:
+        task = load_task_definition(root, inventory)
+    except Exception as exc:
+        print_status("FAIL", str(exc))
+        return 1
+
+    if not offline:
+        failures = _refresh_live_parameter_facts(task, fact_provider)
+        if failures:
+            return failures
+    else:
+        print_status("WARN", "offline parameter rendering; using configured host_facts without probing target hosts")
+
+    print_status("OK", f"manual parameter commands for {len(task.targets)} target(s)")
+    print_status("HINT", "printed only; no shell file is generated and automan does not execute these commands")
+    for target in task.targets:
+        print()
+        print(f"# target: {target.id} ({target.profile.display_name})")
+        print(f"# database: {target.connection.db_host}:{target.connection.db_port}/{target.connection.db_name}")
+        if not target.manual_parameter_commands:
+            print("# no parameter commands declared")
+            continue
+        for command in target.manual_parameter_commands:
+            print(command)
+    return 0
+
+
+def _refresh_live_parameter_facts(task, fact_provider: FactProvider | None = None) -> int:
+    failures = 0
+    provider = fact_provider or _probe_target_facts
+    for target in task.targets:
+        if target.profile.database_type not in AUTO_PARAMETER_DATABASE_TYPES:
+            continue
+        if not target.manual_parameter_commands_auto_generated:
+            continue
+        try:
+            facts = provider(target)
+        except RuntimeError as exc:
+            print_status("FAIL", f"{target.id}: {exc}")
+            failures += 1
+            continue
+        conflicts = live_parameter_conflicts(target, facts, max(task.matrix.terminals))
+        if conflicts:
+            conflict_text = ", ".join(f"{key}={old} (live recommendation {new})" for key, (old, new) in conflicts.items())
+            print_status(
+                "FAIL",
+                f"{target.id}: database_parameters conflict with live host facts: {conflict_text}",
+            )
+            print_status(
+                "HINT",
+                f"{target.id}: remove stale auto-managed database_parameters, or use --offline if these fixed values are intentional",
+            )
+            failures += 1
+            continue
+        refresh_auto_parameter_commands(target, facts, max(task.matrix.terminals))
+        print_status(
+            "OK",
+            f"{target.id}: probed host facts cpu_threads={facts.get('cpu_threads')} memory_gb={facts.get('memory_gb')}",
+        )
+    if failures:
+        print_status("HINT", "fix SSH/config_host/config_user/config_password, or rerun with --offline to explicitly use configured host_facts")
+    return failures
+
+
+def _probe_target_facts(target: Target) -> dict[str, str | int]:
+    connection = target.connection
+    host = connection.ssh_host or connection.db_host
+    if not host:
+        raise RuntimeError("cannot probe host facts because config_host/db_host is empty")
+    if not connection.ssh_user:
+        raise RuntimeError("cannot probe host facts because config_user is empty")
+    client = SSHClient(host=host, port=connection.ssh_port, user=connection.ssh_user, password=connection.ssh_password)
+    facts = probe_host(client)
+    if facts.get("probe_exit_code") != 0:
+        error = str(facts.get("probe_stderr") or facts.get("probe_stdout") or "host probe failed").strip()
+        raise RuntimeError(f"host fact probe failed on {connection.ssh_user}@{host}:{connection.ssh_port}: {error}")
+    missing = [key for key in ("cpu_threads", "memory_gb") if key not in facts]
+    if missing:
+        raise RuntimeError(f"host fact probe did not return {', '.join(missing)} from {connection.ssh_user}@{host}:{connection.ssh_port}")
+    return facts
+
+
 def print_status(level: str, message: str) -> None:
     tags = {
         "OK": "[ OK ]",
@@ -178,3 +331,77 @@ def print_status(level: str, message: str) -> None:
 def _template_path(root: Path, name: str) -> Path:
     candidate = name if name.endswith((".yml", ".yaml")) else f"{name}.yml"
     return root / "conf" / candidate
+
+
+def _configure_aliases(root: Path, config: str) -> list[str]:
+    parts = [part.strip() for part in config.split(",") if part.strip()]
+    if not parts:
+        raise ValueError("-c/--config must contain at least one target alias")
+
+    aliases: list[str] = []
+    unknown: list[str] = []
+    for part in parts:
+        normalized = _normalize_config_name(part)
+        mapped = CONFIG_ALIASES.get(normalized)
+        if mapped is None:
+            unknown.append(part)
+            continue
+        for alias in mapped:
+            if alias not in aliases:
+                aliases.append(alias)
+
+    if unknown:
+        if len(parts) == 1:
+            template = _template_path(root, config)
+            if template.exists():
+                return []
+        available = ", ".join(CONFIG_TARGETS)
+        raise ValueError(f"unknown config alias: {', '.join(unknown)}; available: {available}")
+    return aliases
+
+
+def _normalize_config_name(name: str) -> str:
+    normalized = name.strip().replace("\\", "/").lower()
+    if normalized.startswith("conf/"):
+        normalized = normalized[len("conf/"):]
+    if normalized.endswith((".yml", ".yaml")):
+        normalized = normalized.rsplit(".", 1)[0]
+    if normalized.startswith("tpcc/targets/"):
+        normalized = normalized[len("tpcc/targets/"):]
+    return normalized
+
+
+def _compose_tpcc_inventory(root: Path, aliases: Iterable[str]) -> dict:
+    base_path = root / "conf" / "tpcc" / "base.yml"
+    if not base_path.exists():
+        raise ValueError(f"template base not found: {base_path}")
+    inventory = copy.deepcopy(load_yaml(base_path))
+    children = _inventory_children(inventory, base_path)
+
+    for alias in aliases:
+        target_path = root / "conf" / "tpcc" / "targets" / f"{alias}.yml"
+        if not target_path.exists():
+            raise ValueError(f"target fragment not found for {alias}: {target_path}")
+        fragment = load_yaml(target_path)
+        for name, child in _inventory_children(fragment, target_path).items():
+            if name == "bench":
+                raise ValueError(f"target fragment must not define bench group: {target_path}")
+            if name in children:
+                raise ValueError(f"duplicate inventory group {name!r} from {target_path}")
+            children[name] = child
+    return inventory
+
+
+def _inventory_children(inventory: dict, path: Path) -> dict:
+    all_group = inventory.get("all")
+    if not isinstance(all_group, dict):
+        raise ValueError(f"{path} must contain an all mapping")
+    children = all_group.setdefault("children", {})
+    if not isinstance(children, dict):
+        raise ValueError(f"{path} all.children must be a mapping")
+    return children
+
+
+def _configured_target_names(inventory: dict) -> list[str]:
+    children = _inventory_children(inventory, Path("<generated>"))
+    return [name for name in children if name != "bench"]

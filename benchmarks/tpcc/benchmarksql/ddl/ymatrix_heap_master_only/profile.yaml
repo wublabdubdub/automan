@@ -5,7 +5,6 @@ ddl_profile:
   storage_engine: heap
   test_mode: master_only
   status: approved
-  strategy: benchmarksql_postgresql_default
+  strategy: heap_master_only
   notes:
-    - Uses BenchmarkSQL default PostgreSQL SQL files without modification.
-
+    - tableCreates.sql uses USING heap and DISTRIBUTED MASTERONLY for all BenchmarkSQL TPC-C tables.

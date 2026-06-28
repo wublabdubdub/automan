@@ -12,11 +12,8 @@
       ansible.builtin.command:
         argv:
           - "{{ automan_python }}"
-          - -m
-          - automan_core
-          - cleanup
-          - -i
-          - "{{ automan_config_file }}"
+          - -c
+          - "from pathlib import Path; from automan_core.cleanup import cleanup_tpcc; raise SystemExit(cleanup_tpcc(Path.cwd(), Path(r'''{{ automan_config_file }}''')))"
       args:
         chdir: "{{ automan_root }}"
       changed_when: true

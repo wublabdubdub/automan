@@ -10,11 +10,11 @@ from automan_core.config import load_yaml, write_json
 from automan_core.executor import FATAL_OUTPUT_PATTERNS
 
 
-DEFAULT_TEMPLATE = """# TPC-C Campaign Report
+DEFAULT_TEMPLATE = """# TPC-C Job Report
 
-## Campaign
+## Job
 
-{{ campaign }}
+{{ job }}
 
 ## Matrix
 
@@ -56,23 +56,24 @@ RESULT_PATTERNS = {
 TEXT_ARTIFACT_SUFFIXES = {".csv", ".err", ".json", ".jsonl", ".log", ".md", ".out", ".report", ".script", ".txt"}
 
 
-def generate_report(root: Path, campaign_id: str) -> Path:
-    campaign_dir = root / "runs" / "campaigns" / campaign_id
-    plan = load_yaml(campaign_dir / "resolved-plan.yaml")
-    progress_path = campaign_dir / "progress.json"
-    progress = load_yaml(progress_path) if progress_path.exists() else {}
+def generate_report(root: Path, job_id: str) -> Path:
+    job_dir = find_job_dir(root, job_id)
+    if job_dir is None:
+        raise FileNotFoundError(str(root / "runs" / "jobs" / job_id / "resolved-plan.yaml"))
+    plan = load_yaml(job_dir / "resolved-plan.yaml")
+    job_state_path = _job_state_path(job_dir)
+    job_state = load_yaml(job_state_path) if job_state_path.exists() else {}
 
-    report_dir = campaign_dir / "report"
+    report_dir = job_dir / "report"
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / "report.md"
 
-    agent_context = _build_agent_context(root, campaign_dir, plan, progress)
+    agent_context = _build_agent_context(root, job_dir, plan, job_state)
     agent_context_path = report_dir / "agent-context.json"
     write_json(agent_context_path, agent_context)
 
     context = {
-        "campaign": _render_campaign(campaign_dir, plan, progress, agent_context_path),
-        "manual_parameter_commands_path": _manual_parameter_commands_path(campaign_dir, plan),
+        "job": _render_job(job_dir, plan, job_state, agent_context_path),
         "matrix": _render_matrix(plan.get("matrix", {})),
         "targets": _render_targets(plan.get("targets", [])),
         "benchmark_results": _render_benchmark_results(agent_context["parsed_results"]),
@@ -85,34 +86,47 @@ def generate_report(root: Path, campaign_id: str) -> Path:
     return report_path
 
 
-def latest_campaign_id(root: Path) -> str | None:
-    base = root / "runs" / "campaigns"
-    if not base.exists():
-        return None
-    candidates = sorted((path for path in base.iterdir() if (path / "resolved-plan.yaml").exists()), key=lambda path: path.stat().st_mtime, reverse=True)
+def latest_job_id(root: Path) -> str | None:
+    candidates = sorted(find_job_dirs(root), key=lambda path: path.stat().st_mtime, reverse=True)
     return candidates[0].name if candidates else None
 
 
-def _load_status(campaign_dir: Path) -> str:
-    status_path = campaign_dir / "status.json"
+def find_job_dir(root: Path, job_id: str) -> Path | None:
+    path = root / "runs" / "jobs" / job_id
+    return path if (path / "resolved-plan.yaml").exists() else None
+
+
+def find_job_dirs(root: Path) -> list[Path]:
+    dirs: list[Path] = []
+    seen: set[str] = set()
+    for base in (root / "runs" / "jobs",):
+        if not base.exists():
+            continue
+        for path in sorted(path for path in base.iterdir() if (path / "resolved-plan.yaml").exists()):
+            if path.name in seen:
+                continue
+            seen.add(path.name)
+            dirs.append(path)
+    return dirs
+
+
+def _job_state_path(job_dir: Path) -> Path:
+    return job_dir / "job.json"
+
+
+def _load_status(job_dir: Path) -> str:
+    status_path = job_dir / "status.json"
     if not status_path.exists():
         return "unknown"
     return str(load_yaml(status_path).get("status", "unknown"))
 
 
-def _manual_parameter_commands_path(campaign_dir: Path, plan: dict[str, Any]) -> str:
-    archive = plan.get("archive", {})
-    if isinstance(archive, dict) and archive.get("manual_parameter_commands_path"):
-        return str(archive["manual_parameter_commands_path"])
-    return str(campaign_dir / "manual-parameter-commands.sh")
-
-
-def _render_campaign(campaign_dir: Path, plan: dict[str, Any], progress: dict[str, Any], agent_context_path: Path) -> str:
+def _render_job(job_dir: Path, plan: dict[str, Any], job_state: dict[str, Any], agent_context_path: Path) -> str:
     lines = [
-        f"- campaign_id: {plan.get('campaign_id', campaign_dir.name)}",
-        f"- status: {progress.get('status') or _load_status(campaign_dir)}",
+        f"- job_id: {plan.get('job_id') or job_dir.name}",
+        f"- status: {job_state.get('status') or _load_status(job_dir)}",
         f"- benchmark: {plan.get('benchmark', '-')}",
-        f"- manual_parameter_commands: `{_manual_parameter_commands_path(campaign_dir, plan)}`",
+        "- manual_parameter_commands: recorded in `resolved-plan.yaml`",
         f"- agent_context: `{agent_context_path}`",
     ]
     return "\n".join(lines)
@@ -142,10 +156,16 @@ def _render_targets(targets: list[dict[str, Any]]) -> str:
                 f"  - user: {connection.get('db_user', '-')}",
                 f"  - password: {connection.get('db_password', '***')}",
                 f"  - ddl_profile: {target.get('ddl_profile', '-')}",
-                f"  - manual_parameter_commands: {target.get('manual_parameter_commands_path', '-')}",
+                f"  - manual_parameter_commands: {_command_count(target.get('manual_parameter_commands'))}",
             ]
         )
     return "\n".join(lines) if lines else "- none"
+
+
+def _command_count(value: Any) -> str:
+    if not isinstance(value, list):
+        return "0 command(s)"
+    return f"{len(value)} command(s)"
 
 
 def _render_benchmark_results(results: list[dict[str, Any]]) -> str:
@@ -239,11 +259,11 @@ def _render_collection_status(manifests: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _render_failures(root: Path, runs: list[dict[str, Any]], progress: dict[str, Any]) -> str:
+def _render_failures(root: Path, runs: list[dict[str, Any]], job_state: dict[str, Any]) -> str:
     snippets: list[str] = []
-    if progress.get("last_error"):
-        snippets.append(f"- campaign: {progress['last_error']}")
-    for target in progress.get("targets", []):
+    if job_state.get("last_error"):
+        snippets.append(f"- job: {job_state['last_error']}")
+    for target in job_state.get("targets", []):
         if target.get("last_error"):
             snippets.append(f"- {target.get('target_id', '-')}: {target['last_error']}")
     for run in runs:
@@ -284,14 +304,14 @@ def _fatal_log_lines(root: Path, run: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _build_agent_context(root: Path, campaign_dir: Path, plan: dict[str, Any], progress: dict[str, Any]) -> dict[str, Any]:
+def _build_agent_context(root: Path, job_dir: Path, plan: dict[str, Any], job_state: dict[str, Any]) -> dict[str, Any]:
     runs = _runs(plan)
     parsed_results = [_run_result(root, run) for run in runs]
     artifact_paths = _artifact_paths(root, runs)
-    failures = _failure_lines(root, runs, progress)
+    failures = _failure_lines(root, runs, job_state)
     return {
         "plan": plan,
-        "progress": progress,
+        "job_state": job_state,
         "parsed_results": parsed_results,
         "artifact_paths": artifact_paths,
         "collection_status": _collection_status(artifact_paths.get("manifests", [])),
@@ -588,8 +608,8 @@ def _path_value(root: Path, run: dict[str, Any], key: str, default_suffix: str) 
     return path if path.is_absolute() else root / path
 
 
-def _failure_lines(root: Path, runs: list[dict[str, Any]], progress: dict[str, Any]) -> list[str]:
-    failures = _render_failures(root, runs, progress)
+def _failure_lines(root: Path, runs: list[dict[str, Any]], job_state: dict[str, Any]) -> list[str]:
+    failures = _render_failures(root, runs, job_state)
     if failures == "- none":
         return []
     return [line[2:] if line.startswith("- ") else line for line in failures.splitlines()]

@@ -1,22 +1,54 @@
 ---
-- name: Run TPC-C campaign through automan CLI
+- name: Run TPC-C job through automan CLI
   ansible.builtin.command:
-    argv:
-      - "{{ automan_python }}"
-      - -m
-      - automan_core
-      - run
-      - -i
-      - "{{ automan_config_file }}"
+    argv: "{{ [automan_python, '-m', 'automan_core', 'run', '-i', automan_config_file] + ((stage | default('') | length > 0) | ternary(['--stage', stage], [])) }}"
   args:
     chdir: "{{ automan_root }}"
   register: tpcc_run_result
+  failed_when: false
   tags:
     - tpcc_run
 
 - name: Show TPC-C run output
   ansible.builtin.debug:
     var: tpcc_run_result.stdout_lines
-  when: tpcc_run_result.stdout_lines is defined
+  when:
+    - tpcc_run_result.rc == 0
+    - tpcc_run_result.stdout_lines is defined
+  tags:
+    - tpcc_run
+
+- name: Show formatted TPC-C run failure
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ (tpcc_run_result.stdout_lines | default([]))[-80:] }}"
+  loop_control:
+    label: ""
+  when:
+    - tpcc_run_result.rc != 0
+    - tpcc_run_result.stdout_lines | default([]) | length > 0
+  tags:
+    - tpcc_run
+
+- name: Show formatted TPC-C run stderr
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ tpcc_run_result.stderr_lines | default([]) }}"
+  loop_control:
+    label: ""
+  when:
+    - tpcc_run_result.rc != 0
+    - tpcc_run_result.stderr_lines | default([]) | length > 0
+  tags:
+    - tpcc_run
+
+- name: Fail after formatted TPC-C run output
+  ansible.builtin.fail:
+    msg: >-
+      {{ (tpcc_run_result.stdout | default('') | regex_search('(?m)^\[FAIL\].*')) | default('TPC-C run failed', true) }}
+      {% set hints = tpcc_run_result.stdout | default('') | regex_findall('(?m)^\[HINT\].*') %}
+      {% if hints | length > 0 %} | {{ hints[-3:] | join(' | ') }}{% endif %}
+      (rc={{ tpcc_run_result.rc }}; command: {{ automan_python }} -m automan_core run -i {{ automan_config_file }}{% if stage | default('') | length > 0 %} --stage {{ stage }}{% endif %})
+  when: tpcc_run_result.rc != 0
   tags:
     - tpcc_run

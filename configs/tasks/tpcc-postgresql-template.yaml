@@ -32,12 +32,12 @@ targets:
 
     # connection: 连接信息。automan 只用 database 连接做压测，不再登录配置机改参数。
     connection:
-      # config_ssh: 配置机信息，仅用于生成参数修改命令和记录，不由 automan 执行。
+      # config_ssh: 远程采集检查和采集用 SSH 信息。
       config_ssh:
-        # host: 数据库配置机 IP。
-        host: 192.168.100.29
-        # port: 数据库配置机 SSH 端口。
-        port: 22
+        # host: 可选；省略时复用 database.host。仅当 SSH 主机不同于数据库监听地址时填写。
+        # host: 192.168.100.29
+        # port: 可选；省略时默认 22。
+        # port: 22
         # user: 手动执行参数修改命令时建议使用的 OS 用户。
         user: 12pg
         # password: 不建议写明文；需要时可临时填写，计划文件会脱敏。
@@ -58,34 +58,29 @@ targets:
         # password: 压测数据库密码。
         password: ""
 
-      # postgresql_conf: PostgreSQL 配置文件路径，仅用于生成手工参数修改命令。
-      postgresql_conf: /home/12pg/data/postgresql.conf
-      # restart_command: 手工应用参数后建议执行的重启命令，automan 不会执行。
-      restart_command: pg_ctl restart -D /home/12pg/data
-
     # host_facts: 主机规格记录。用于复盘，不由 automan 自动探测。
-    host_facts:
+    # host_facts:
       # cpu_threads: CPU 线程数。
-      cpu_threads: 64
+      # cpu_threads: 64
       # memory_gb: 内存 GB。
-      memory_gb: 251
+      # memory_gb: 64
 
     # database_parameters: 推荐或确认后的数据库参数。automan 只生成手工命令，不会执行。
     database_parameters:
       # max_connections: 最大连接数，应大于最大 terminals 并留出管理连接余量。
-      max_connections: "550"
+      # max_connections: "550"
       # shared_buffers: PostgreSQL shared_buffers，通常取内存的 20%-30% 起步。
-      shared_buffers: 62GB
+      # shared_buffers: 16GB
       # effective_cache_size: 优化器估算可用缓存，通常取内存的 60%-75%。
-      effective_cache_size: 175GB
+      # effective_cache_size: 44GB
       # work_mem: 单个排序/hash 操作内存，需结合并发数控制总量。
-      work_mem: 116MB
+      # work_mem: 29MB
       # maintenance_work_mem: 建索引、维护操作内存，影响 BenchmarkSQL build 阶段。
-      maintenance_work_mem: 12GB
+      # maintenance_work_mem: 3GB
       # checkpoint_timeout: checkpoint 周期，压测时可适当放大。
-      checkpoint_timeout: 30min
+      # checkpoint_timeout: 30min
       # max_wal_size: WAL 最大尺寸，压测装载阶段建议放大。
-      max_wal_size: 64GB
+      # max_wal_size: 64GB
 
     # manual_parameter_commands: 可选。为空时 automan 根据 database_parameters 自动生成手工命令。
     manual_parameter_commands: []

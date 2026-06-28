@@ -9,7 +9,7 @@ Actual benchmark execution must happen on the remote execution host:
 ```text
 host: 172.16.100.143
 user: root
-password: stored in PROJECT_MEMORY.local.md
+password: root
 remote_path: /root/automan
 ```
 

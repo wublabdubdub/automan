@@ -9,6 +9,5 @@ database_profile:
     ddl_profile: ymatrix_heap_master_only
     ddl_dir: benchmarks/tpcc/benchmarksql/ddl/ymatrix_heap_master_only
     benchmarksql_db: postgres
-    table_strategy: benchmarksql_postgresql_default
+    table_strategy: heap_master_only
     requires_ddl_confirmation: false
-

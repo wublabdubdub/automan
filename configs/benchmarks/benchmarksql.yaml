@@ -1,0 +1,28 @@
+benchmarksql:
+  properties:
+    useWarehouseFrom: -1
+    useWarehouseTo: -1
+    monkeys: 1
+    sutThreads: 4
+    maxDeliveryBGThreads: 4
+    maxDeliveryBGPerWarehouse: 1
+    rampupMins: 5
+    rampupSUTMins: 1
+    rampupTerminalMins: 1
+    reportIntervalSecs: 10
+    resultIntervalSecs: 10
+    restartSUTThreadProbability: 0.0
+    keyingTimeMultiplier: 1.0
+    thinkTimeMultiplier: 1.0
+    terminalMultiplier: 1
+    traceTerminalIO: false
+    runTxnsPerTerminal: 0
+    limitTxnsPerMin: 0
+    terminalWarehouseFixed: false
+    useStoredProcedures: false
+    paymentWeight: 43.2
+    orderStatusWeight: 4.2
+    deliveryWeight: 4.2
+    stockLevelWeight: 4.2
+    newOrderWeight: "44.200"
+    rollbackPercent: 1.01

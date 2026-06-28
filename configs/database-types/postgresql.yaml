@@ -20,7 +20,4 @@ database_type:
     settings_sql: "select name, setting, unit from pg_settings"
 
   config_apply:
-    method: postgresql_conf
-    config_file_prompt: "postgresql.conf path"
-    restart_command_prompt: "PostgreSQL restart command"
-
+    method: alter_system

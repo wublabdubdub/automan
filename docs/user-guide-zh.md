@@ -45,17 +45,18 @@ automan/
 
   conf/
     tpcc/
-      pg.yml                PostgreSQL 单机 heap TPC-C 模板
-      ymatrix-heap.yml      YMatrix heap master only TPC-C 模板
-      ymatrix-mars3.yml     YMatrix mars3 master only TPC-C 模板
-      pg-vs-ymatrix.yml     PostgreSQL 与 YMatrix 对比模板
+      base.yml                 TPC-C 共享矩阵与采集配置
+      targets/
+        pg.yml                 PostgreSQL 单机 heap 目标片段
+        ym-heap.yml            YMatrix heap master only 目标片段
+        ym-mars3.yml           YMatrix mars3 master only 目标片段
 
   playbooks/                Ansible playbook 实现
   roles/                    Ansible roles
   automan_core/             Python 控制面
   benchmarks/               BenchmarkSQL DDL profile
   tools/benchmarksql/       BenchmarkSQL 工具
-  runs/                     campaign 与 run 结果目录
+  runs/                     job 与 run 结果目录
   work/                     每个 run 的 BenchmarkSQL 工作目录
 ```
 
@@ -66,16 +67,14 @@ automan/
 ```bash
 cd /root/automan
 
-./configure -c tpcc/pg -o automan.yml
-./bin/validate -i automan.yml
-
+./configure -c pg -o automan.yml
 ./automan param -i automan.yml
-# 手工检查并执行生成的 manual-parameter-commands.sh
+# 手工检查屏幕输出的修改命令和确认命令，并按需执行
 
 ./check.yml -i automan.yml
 ./tpcc.yml -i automan.yml
 
-./automan progress
+./automan list
 ./report.yml -i automan.yml
 ```
 
@@ -91,7 +90,7 @@ cd /root/automan
 ./automan run --task configs/tasks/tpcc-postgresql-template.yaml --plan-only
 ```
 
-但新工作建议统一使用 `conf/tpcc/*.yml`。
+但新工作建议统一使用 `./configure -c pg,ym-heap -o automan.yml` 这类短别名生成配置。
 
 ## 4. 配置模板
 
@@ -100,16 +99,16 @@ cd /root/automan
 从模板生成本次任务配置：
 
 ```bash
-./configure -c tpcc/pg -o automan.yml
+./configure -c pg -o automan.yml
 ```
 
 可选模板：
 
 ```text
-tpcc/pg
-tpcc/ymatrix-heap
-tpcc/ymatrix-mars3
-tpcc/pg-vs-ymatrix
+pg
+ym-heap
+ym-mars3
+pg,ym-heap
 ```
 
 生成后的 `automan.yml` 是本次压测的主配置文件。
@@ -256,31 +255,20 @@ Automan 只生成命令：
 ./automan param -i automan.yml
 ```
 
-输出类似：
-
-```text
-runs/campaigns/<campaign_id>/manual-parameter-commands.sh
-```
-
-这个 campaign 是参数预审 campaign，不是正式 benchmark campaign。
+`param` 会直接在屏幕输出参数修改命令和确认命令，不再生成 `manual-parameter-commands.sh`，也不会创建参数预审 job。
 
 ### 6.2 PostgreSQL 参数命令
 
 PostgreSQL 会生成：
 
 ```text
-备份 postgresql.conf
-写入 automan managed settings block
-执行 restart_command
+ALTER SYSTEM SET <参数名> = <参数值>
 show 每个参数
 ```
 
 配置字段：
 
 ```yaml
-postgresql_conf: /home/12pg/data/postgresql.conf
-restart_command: pg_ctl restart -D /home/12pg/data
-
 database_parameters:
   max_connections: "550"
   shared_buffers: 62GB
@@ -291,7 +279,7 @@ database_parameters:
   max_wal_size: 64GB
 ```
 
-用户需要登录配置机，以 PostgreSQL OS 用户身份手工执行脚本中的命令。
+用户需要使用具备 `ALTER SYSTEM` 权限的数据库角色手工执行屏幕输出的命令。参数是否需要 reload 或 restart 由用户按数据库规则自行处理，Automan 不生成重启命令。
 
 ### 6.3 YMatrix 参数命令
 
@@ -299,7 +287,6 @@ YMatrix 会生成：
 
 ```text
 gpconfig -c <参数名> -v <参数值>
-mxstop -afr
 show 每个参数
 ```
 
@@ -307,7 +294,6 @@ show 每个参数
 
 ```yaml
 gpconfig_command: gpconfig
-restart_command: mxstop -afr
 
 database_parameters:
   max_connections: "550"
@@ -333,24 +319,7 @@ vacuum_cost_limit
 
 ## 7. 校验
 
-### 7.1 只校验配置结构
-
-```bash
-./bin/validate -i automan.yml
-```
-
-输出示例：
-
-```text
-[ OK ] benchmark: tpcc
-[ OK ] warehouses: 100
-[ OK ] terminals: 100, 500
-[ OK ] 1 benchmark target found
-[ OK ] pg: postgresql 192.168.100.29:5232/postgres
-[HINT] pg: parameter changes are manual-only; commands can be rendered
-```
-
-### 7.2 检查执行环境、数据库连通性和采集权限
+### 7.1 检查执行环境、数据库连通性和采集权限
 
 ```bash
 ./check.yml -i automan.yml
@@ -373,6 +342,8 @@ perf script/perf report 是否可导出
 ```
 
 如果 `db_password` 留空，而数据库需要密码，`check.yml` 会失败。可以在本地 `automan.yml` 中填入密码，或使用临时 inventory 文件。
+
+远程数据库主机的采集检查会通过 SSH 执行。SSH 主机默认复用 `db_host`；只有 SSH 入口和数据库连接地址不同时才需要填写 `config_host`。远程 SSH 仍然需要 `config_user` 和 `config_password`，当前不使用 SSH key 或 agent 自动登录。
 
 如果采集权限不足，`check.yml` 会在压测前失败，并明确输出需要处理的权限或工具，例如：
 
@@ -447,6 +418,7 @@ runBenchmark.sh
 - 每次压测都会重新 build。
 - 除非第一条 run 的 schema probe 证明库里没有 `bmsql_*` 对象，否则会先 destroy。
 - BenchmarkSQL 的 build/destroy 脚本即使返回 0，只要日志包含 `FATAL`、`ERROR`、`Exception`、`Failed to`、`password authentication failed`，Automan 也会判失败。
+- `runBenchmark.sh` 返回 0 且日志中已经输出最终 `Measured tpmC` 时，Automan 会保留该次结果；中途事务错误仍保留在日志和报告里。
 
 ## 9. 只跑准备阶段
 
@@ -466,43 +438,86 @@ runBenchmark.sh
 
 不会执行 `runDatabaseBuild.sh` 或 `runBenchmark.sh`。
 
-## 10. 查看进度
+## 10. 查看运行进度和完成结果
 
-查看最新 campaign：
+查看当前正在运行的 TPC-C job：
 
 ```bash
 ./automan progress
 ```
 
-持续刷新：
+持续刷新，默认 5 秒：
 
 ```bash
-./automan progress --watch --interval 5
+./automan progress --watch
 ```
 
-查看指定 campaign：
+指定刷新间隔：
 
 ```bash
-./automan progress --campaign <campaign_id>
+./automan progress --watch 5
+```
+
+指定 job：
+
+```bash
+./automan progress --job <job_id>
+```
+
+`progress` 自动识别当前 running job，输出 Pigsty 风格状态行。TPC-C 阶段含义如下：
+
+```text
+schema_probe: action=probe
+runDatabaseDestroy.sh: action=destroy
+runDatabaseBuild.sh: action=load
+runBenchmark.sh: action=test
+report: action=report
+```
+
+当阶段是 `runBenchmark.sh` 时，会显示 elapsed、expected、remain、pct。
+
+`list` 用于查看已经完成并能解析性能指标的结果：
+
+查看所有已完成并可解析性能指标的结果：
+
+```bash
+./automan list
+```
+
+查看指定 job：
+
+```bash
+./automan list --job <job_id>
+```
+
+每一行结果都有稳定 ID，例如 `pg31-w100-c500`。这个 ID 来自 run id 去掉 job 前缀，不会因为排序变化而改变。
+
+删除整个 job 及其关联的 run/work 产物：
+
+```bash
+./automan delete <job_id>
+```
+
+跳过交互确认：
+
+```bash
+./automan delete <job_id> -f
 ```
 
 输出字段：
 
 ```text
-Campaign: campaign id
-Status: planned/running/success/failed/cancelled
-Progress: 完成数/总数
+ID: 可用于 delete 的稳定 ID
+Job: job id
+Finished Results: 已完成并可解析性能结果的 run 数
 TARGET: target id
 DB HOST: 数据库地址
-CURRENT RUN: 当前 run
-PHASE: 当前阶段
-DONE: target 已完成 run 数
-Last error: 最近错误
+tpmC/tpmTOTAL: BenchmarkSQL 解析出的性能指标
 ```
 
 ## 11. 生成报告
 
-生成最新 campaign 报告：
+生成最新 job 报告：
 
 ```bash
 ./report.yml -i automan.yml
@@ -514,23 +529,23 @@ Last error: 最近错误
 ./automan report
 ```
 
-指定 campaign：
+指定 job：
 
 ```bash
-./automan report --campaign <campaign_id>
+./automan report --job <job_id>
 ```
 
 报告位置：
 
 ```text
-runs/campaigns/<campaign_id>/report/report.md
+runs/jobs/<job_id>/report/report.md
 ```
 
 报告内容包括：
 
 ```text
-campaign 状态
-manual parameter commands 路径
+job 状态
+manual parameter commands 记录位置：resolved-plan.yaml
 TPC-C matrix
 target 信息
 每个 run 的状态、仓数、并发数、runMins
@@ -544,7 +559,7 @@ perf record 产物索引：perf.data、perf.script.txt、perf.report.txt
 同时会生成供 agent 继续分析的结构化上下文：
 
 ```text
-runs/campaigns/<campaign_id>/report/agent-context.json
+runs/jobs/<job_id>/report/agent-context.json
 ```
 
 报告只展示客观事实和产物路径，不输出调优建议或复盘结论。
@@ -557,12 +572,6 @@ runs/campaigns/<campaign_id>/report/agent-context.json
 ./tpcc-rm.yml -i automan.yml
 ```
 
-等价 CLI：
-
-```bash
-./automan cleanup -i automan.yml
-```
-
 清理逻辑：
 
 ```text
@@ -572,20 +581,19 @@ runs/campaigns/<campaign_id>/report/agent-context.json
 删除 current_schema() 下 relname like 'bmsql_%' 的表和序列
 ```
 
-这是显式危险操作，只在用户主动执行 `tpcc-rm.yml` 或 `automan cleanup` 时发生。正式压测中的 destroy 仍由 BenchmarkSQL 的 `runDatabaseDestroy.sh` 控制。
+这是显式危险操作，只在用户主动执行 `tpcc-rm.yml` 时发生。正式压测中的 destroy 仍由 BenchmarkSQL 的 `runDatabaseDestroy.sh` 控制。
 
 ## 13. 结果目录
 
-一次 campaign：
+一次 job：
 
 ```text
-runs/campaigns/<campaign_id>/
-  campaign.yaml
+runs/jobs/<job_id>/
+  job.yaml
   resolved-plan.yaml
-  progress.json
+  job.json
   status.json
   timeline.jsonl
-  manual-parameter-commands.sh
   report/
     report.md
     agent-context.json
@@ -713,13 +721,13 @@ python3.8 -m automan_core --help
 
 当前脚本入口默认使用 `python3.8`。
 
-### 14.5 `progress` 显示 failed 但不知道原因
+### 14.5 `list` 显示 failed 但不知道原因
 
 处理：
 
 ```bash
-./automan progress --campaign <campaign_id>
-cat runs/campaigns/<campaign_id>/timeline.jsonl
+./automan list --job <job_id>
+cat runs/jobs/<job_id>/timeline.jsonl
 cat runs/<run_id>/status.json
 ls runs/<run_id>/logs/
 ```
@@ -764,17 +772,16 @@ where n.nspname = current_schema()
 ```bash
 cd /root/automan
 
-./configure -c tpcc/pg -o automan.yml
+./configure -c pg -o automan.yml
 vi automan.yml
 
-./bin/validate -i automan.yml
 ./automan param -i automan.yml
 
-# 手工执行参数修改脚本，并确认数据库参数生效
+# 手工执行屏幕输出的参数修改命令，并确认数据库参数生效
 
 ./check.yml -i automan.yml
 ./tpcc.yml -i automan.yml
-./automan progress --watch --interval 5
+./automan list
 ./report.yml -i automan.yml
 ```
 
@@ -783,18 +790,17 @@ vi automan.yml
 ```bash
 cd /root/automan
 
-./configure -c tpcc/ymatrix-mars3 -o automan.yml
+./configure -c ym-mars3 -o automan.yml
 vi automan.yml
 
 # 重点确认 mars3_options
-./bin/validate -i automan.yml
 ./automan param -i automan.yml
 
-# 手工执行 gpconfig/mxstop 等参数命令
+# 手工执行 gpconfig 参数命令；如参数需要 reload/restart，由用户手工处理
 
 ./check.yml -i automan.yml
 ./tpcc.yml -i automan.yml
-./automan progress --watch --interval 5
+./automan list
 ./report.yml -i automan.yml
 ```
 
@@ -803,17 +809,16 @@ vi automan.yml
 ```bash
 cd /root/automan
 
-./configure -c tpcc/pg-vs-ymatrix -o automan.yml
+./configure -c pg,ym-heap -o automan.yml
 vi automan.yml
 
-./bin/validate -i automan.yml
 ./automan param -i automan.yml
 
 # 分别手工应用每个数据库目标的参数
 
 ./check.yml -i automan.yml
 ./tpcc.yml -i automan.yml
-./automan progress --watch --interval 5
+./automan list
 ./report.yml -i automan.yml
 ```
 
@@ -844,4 +849,4 @@ PG 当前 schema 下 bmsql_% 对象数: 0
 configs/tasks/tpcc-postgresql-template.yaml
 ```
 
-这是 legacy 模板里的本地密码配置，未纳入提交。新流程建议使用 `conf/tpcc/*.yml`。
+这是 legacy 模板里的本地密码配置，未纳入提交。新流程建议使用 `conf/tpcc/base.yml` 和 `conf/tpcc/targets/*.yml` 生成配置。

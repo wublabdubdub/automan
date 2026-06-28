@@ -24,17 +24,18 @@ class SSHClient:
     def run(self, command: str, timeout: int = 120) -> CommandResult:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        use_password = bool(self.password)
         try:
             client.connect(
                 hostname=self.host,
                 port=self.port,
                 username=self.user,
-                password=self.password,
+                password=self.password or None,
                 timeout=10,
                 banner_timeout=10,
                 auth_timeout=10,
-                look_for_keys=False,
-                allow_agent=False,
+                look_for_keys=not use_password,
+                allow_agent=not use_password,
             )
             _, stdout, stderr = client.exec_command(command, timeout=timeout)
             out = stdout.read().decode("utf-8", errors="replace")
@@ -45,4 +46,3 @@ class SSHClient:
             return CommandResult(command=command, exit_code=255, stdout="", stderr=str(exc))
         finally:
             client.close()
-
