@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 from automan_core.config import load_yaml, write_json
 from automan_core.models import Target, TsRunSpec
@@ -16,7 +16,7 @@ RESULT_ID_MIN_LENGTH = 10
 RESULT_ID_MAX_LENGTH = 40
 
 
-Runner = Callable[[list[str], Path, int, dict[str, str] | None], CommandResult]
+Runner = Callable[[List[str], Path, int, Optional[Dict[str, str]]], CommandResult]
 
 
 def show_completed_results(
