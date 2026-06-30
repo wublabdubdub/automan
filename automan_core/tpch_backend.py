@@ -276,10 +276,12 @@ def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig
     gen_data_dir = shlex.quote(variables["GEN_DATA_DIR"])
     ext_host_data_dir = shlex.quote(variables["EXT_HOST_DATA_DIR"])
     segment_ext_dirs = _prepare_segment_ext_dirs_command(variables["DATABASE_TYPE"], ext_host_data_dir)
+    wait_for_database = _wait_for_database_command()
     return (
         f"{exports}; {greenplum_setup}; "
         f"cd {shlex.quote(remote_dir)} && "
         "{ "
+        f"{wait_for_database}; "
         "chmod +x ./rollout.sh ./0*/rollout.sh ./01_gen_data/generate_data.sh ./01_gen_data/generate_queries.sh "
         "./04_load/*.sh 2>/dev/null || true; "
         f"mkdir -p {gen_data_dir}/log {ext_host_data_dir}; "
@@ -309,6 +311,16 @@ def _prepare_segment_ext_dirs_command(database_type: str, ext_host_data_dir: str
         f"ssh -o StrictHostKeyChecking=no \"$host\" mkdir -p {ext_host_data_dir}; "
         "done; "
         "fi"
+    )
+
+
+def _wait_for_database_command() -> str:
+    return (
+        "for attempt in $(seq 1 60); do "
+        "psql -v ON_ERROR_STOP=1 -Atc 'select 1' >/dev/null 2>&1 && break; "
+        "if [ \"$attempt\" = 60 ]; then psql -v ON_ERROR_STOP=1 -Atc 'select 1' >/dev/null; fi; "
+        "sleep 5; "
+        "done"
     )
 
 
