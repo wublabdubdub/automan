@@ -224,11 +224,15 @@ def _default_remote_client(target: Target, backend: TpchBackendConfig) -> Remote
 
 def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig, run: TpchRunSpec) -> str:
     variables = _backend_variables(target, backend, run)
-    exports = " ".join(
-        f"{name}={shlex.quote(value)}"
+    exports = "; ".join(
+        f"export {name}={shlex.quote(value)}"
         for name, value in variables.items()
-        if name.startswith("PG") or name == "GREENPLUM_PATH"
+        if name.startswith("PG")
     )
+    if variables["GREENPLUM_PATH"]:
+        greenplum_setup = f"export GREENPLUM_PATH={shlex.quote(variables['GREENPLUM_PATH'])}"
+    else:
+        greenplum_setup = 'source ~/.bashrc >/dev/null 2>&1 || true; if [ -z "${GREENPLUM_PATH:-}" ] && [ -n "${GPHOME:-}" ]; then export GREENPLUM_PATH="${GPHOME}/greenplum_path.sh"; fi'
     args = [
         variables["GEN_DATA_SCALE"],
         variables["EXPLAIN_ANALYZE"],
@@ -261,12 +265,15 @@ def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig
         variables["PURE_SCRIPT_MODE"],
     ]
     rendered_args = " ".join(shlex.quote(arg) for arg in args)
+    if not variables["GREENPLUM_PATH"]:
+        rendered_args = rendered_args.replace("''", '"${GREENPLUM_PATH:-}"', 1)
     return (
+        f"{exports}; {greenplum_setup}; "
         f"cd {shlex.quote(remote_dir)} && "
         "{ "
         "chmod +x ./rollout.sh ./0*/rollout.sh ./01_gen_data/generate_data.sh ./01_gen_data/generate_queries.sh "
         "./04_load/*.sh 2>/dev/null || true; "
-        f"{exports} ./rollout.sh {rendered_args}; "
+        f"./rollout.sh {rendered_args}; "
         "}"
     )
 
