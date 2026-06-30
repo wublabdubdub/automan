@@ -185,7 +185,8 @@ class YMatrixTpchBackend:
             f"cd {shlex.quote(remote_dir)} && "
             "tar -xzf ymatrix-tpch.tar.gz && "
             "rm -f ymatrix-tpch.tar.gz && "
-            f"{_normalize_remote_scripts_command()}",
+            f"{_normalize_remote_scripts_command()} && "
+            f"{_patch_remote_scripts_command()}",
             timeout=600,
         )
         _write_command(run.logs_dir, "ymatrix-backend-extract", extract)
@@ -305,6 +306,10 @@ def _normalize_remote_scripts_command() -> str:
         ]
     )
     return f"find . -type f \\( {patterns} \\) -exec sed -i 's/\\r$//' {{}} +"
+
+
+def _patch_remote_scripts_command() -> str:
+    return "sed -i 's/ssh -o ConnectTimeout=0 -n -f \\$i/ssh -o ConnectTimeout=5 \\$i/g' ./01_gen_data/rollout.sh"
 
 
 def _prepare_segment_ext_dirs_command(database_type: str, ext_host_data_dir: str) -> str:
