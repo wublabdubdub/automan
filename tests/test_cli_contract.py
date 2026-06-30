@@ -303,7 +303,8 @@ all:
             self.assertIn("pg:", inventory)
             self.assertIn("ymatrix_heap:", inventory)
             self.assertIn("tpcc_warehouses:", inventory)
-            self.assertIn("- 100", inventory)
+            self.assertIn("tpcc_warehouses: [100]", inventory)
+            self.assertIn("tpcc_terminals: [100, 500]", inventory)
             self.assertIn("configured targets: pg, ym-heap", output.getvalue())
 
     def test_configure_accepts_legacy_single_target_name(self) -> None:
