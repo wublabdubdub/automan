@@ -46,8 +46,10 @@ def check_task_readiness(
     sftp_fetcher: SFTPFetcher | None = None,
 ) -> list[CheckResult]:
     results: list[CheckResult] = []
-    for target in task.targets:
-        results.extend(check_database_connectivity(root, target, local_runner=local_runner))
+    skip_local_db_check = task.benchmark == "tpch" and task.tpch_config is not None and task.tpch_config.backend.type == "ymatrix-tpch"
+    if not skip_local_db_check:
+        for target in task.targets:
+            results.extend(check_database_connectivity(root, target, local_runner=local_runner))
     if task.benchmark == "ts" and task.ts_config is not None:
         for target in task.targets:
             results.extend(check_mxgate_readiness(target, task.ts_config.mxgate))
