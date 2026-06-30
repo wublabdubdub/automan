@@ -178,7 +178,6 @@ def _fake_tpch_run_for_check(root: Path, target_id: str, scale_factor: int, conf
         compress_threshold=threshold,
         scale_factor=scale_factor,
         query_streams=config.query_streams[0] if config.query_streams else 1,
-        run_mins=config.run_mins[0] if config.run_mins else 0,
         run_dir=root / "runs" / ".check",
         benchmark_dir=root / "runs" / ".check" / "benchmark",
         database_dir=root / "runs" / ".check" / "database",

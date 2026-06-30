@@ -32,6 +32,7 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertEqual(inventory["all"]["vars"]["benchmark"], "tpch")
             self.assertEqual(inventory["all"]["vars"]["tpch_stages"], ["tpch-load", "tpch-query"])
             self.assertEqual(inventory["all"]["vars"]["tpch"]["scale_factors"], [1])
+            self.assertNotIn("run_mins", inventory["all"]["vars"]["tpch"])
             self.assertEqual(inventory["all"]["children"]["pg"]["vars"]["tpch_ddl_profile"], "pg")
             self.assertEqual(inventory["all"]["children"]["ymatrix_heap"]["vars"]["tpch_ddl_profile"], "ym-heap")
             self.assertEqual(inventory["all"]["children"]["ymatrix_mars3"]["vars"]["tpch_ddl_profile"], "ym-mars3")
@@ -304,7 +305,7 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertEqual([run["stage"] for run in plan["runs"]], ["tpch-query", "tpch-query", "tpch-query"])
             self.assertEqual([run["ddl_profile"] for run in plan["runs"]], ["pg", "ym-heap", "ym-mars3"])
 
-    def test_tpch_run_id_includes_run_mins(self) -> None:
+    def test_tpch_run_id_omits_run_mins(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -312,17 +313,14 @@ class TpchBenchmarkTest(unittest.TestCase):
             inventory = root / "automan.yml"
             data = cli._compose_inventory(root, "tpch", ["pg"])
             data["all"]["vars"]["job_id"] = "job-tpch"
-            data["all"]["vars"]["tpch"]["run_mins"] = [0, 10]
             write_yaml(inventory, data)
 
             task = load_task_definition(root, inventory)
             runs = build_tpch_run_specs(root, "job-tpch", task.targets, task.tpch_config, "tpch-query")
 
             run_ids = [run.run_id for run in runs]
-            self.assertEqual(len(run_ids), 2)
-            self.assertEqual(len(set(run_ids)), 2)
-            self.assertIn("job-tpch-pg-sf1-q1-m0-tpch-query", run_ids)
-            self.assertIn("job-tpch-pg-sf1-q1-m10-tpch-query", run_ids)
+            self.assertEqual(run_ids, ["job-tpch-pg-sf1-q1-tpch-query"])
+            self.assertNotIn("-m0-", run_ids[0])
 
     def test_tpch_results_list_uses_tpch_columns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -357,7 +355,6 @@ class TpchBenchmarkTest(unittest.TestCase):
                     "compress_threshold": 1200,
                     "scale_factor": 1,
                     "query_streams": 1,
-                    "run_mins": 0,
                     "table_data_size": "1.5 GB",
                     "elapsed_seconds": 123.4,
                     "qphh": 88.8,
@@ -388,7 +385,7 @@ class TpchBenchmarkTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             job_dir = root / "runs/jobs/job-tpch"
-            run_dir = root / "runs/job-tpch-pg-sf1-q1-m0-tpch-load"
+            run_dir = root / "runs/job-tpch-pg-sf1-q1-tpch-load"
             run_dir.mkdir(parents=True)
             write_yaml(
                 job_dir / "resolved-plan.yaml",
@@ -416,7 +413,6 @@ class TpchBenchmarkTest(unittest.TestCase):
                     "ddl_profile": "pg",
                     "scale_factor": 1,
                     "query_streams": 1,
-                    "run_mins": 0,
                     "error": "TPC-H data directory not found",
                     "session_end": "2026-06-29T18:30:00",
                 },
@@ -664,7 +660,6 @@ class FakeYMatrixBackend:
             "scale_factor": run.scale_factor,
             "compress_threshold": run.compress_threshold,
             "query_streams": run.query_streams,
-            "run_mins": run.run_mins,
             "elapsed_seconds": 1.0,
             "upstream_artifacts": {"local_dir": str(run.benchmark_dir / "upstream")},
         }

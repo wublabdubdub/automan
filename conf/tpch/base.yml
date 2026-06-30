@@ -11,7 +11,6 @@ all:
     tpch:
       scale_factors: [1]
       query_streams: [1]
-      run_mins: [0]
       query_set: standard
       data_dir: benchmarks/tpch/data/sf{scale_factor}
       schema_dir: benchmarks/tpch/schema

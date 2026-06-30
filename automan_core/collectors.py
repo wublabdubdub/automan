@@ -66,7 +66,7 @@ class CollectorManager:
         self.perf_sample_interval_ratio = float(self._section("perf").get("sample_interval_ratio", 0.3))
         self.perf_samples = _build_perf_samples(
             mode=self.perf_mode,
-            run_mins=run.run_mins,
+            run_mins=int(getattr(run, "run_mins", 0)),
             count=self.perf_sample_count,
             duration_seconds=self.perf_sample_duration_seconds,
             delay_seconds=self.perf_sample_delay_seconds,

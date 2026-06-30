@@ -153,7 +153,6 @@ def _render_matrix(matrix: dict[str, Any], benchmark: Any = None) -> str:
                 f"- tpch_stages: {', '.join(map(str, matrix.get('tpch_stages', [])))}",
                 f"- scale_factors: {', '.join(map(str, matrix.get('scale_factors', [])))}",
                 f"- query_streams: {', '.join(map(str, matrix.get('query_streams', [])))}",
-                f"- run_mins: {', '.join(map(str, matrix.get('run_mins', [])))}",
             ]
         )
     if "compress_threshold" in matrix or "ts_stages" in matrix:
@@ -235,8 +234,8 @@ def _render_benchmark_results(results: list[dict[str, Any]], benchmark: Any = No
 
 def _render_tpch_results(results: list[dict[str, Any]]) -> str:
     lines = [
-        "| Run | Stage | Status | Target | Backend | Schema | DDL Profile | Compress Threshold | Scale Factor | Streams | Run Mins | Table Data Size | Elapsed Seconds | Query Count | Avg ms | P50 ms | P95 ms | P99 ms | QphH | Errors | End Time | Remote Backend | Result Dir |",
-        "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |",
+        "| Run | Stage | Status | Target | Backend | Schema | DDL Profile | Compress Threshold | Scale Factor | Streams | Table Data Size | Elapsed Seconds | Query Count | Avg ms | P50 ms | P95 ms | P99 ms | QphH | Errors | End Time | Remote Backend | Result Dir |",
+        "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |",
     ]
     for result in results:
         lines.append(
@@ -253,7 +252,6 @@ def _render_tpch_results(results: list[dict[str, Any]]) -> str:
                     _cell(result.get("compress_threshold")),
                     _cell(result.get("scale_factor")),
                     _cell(result.get("query_streams")),
-                    _cell(result.get("run_mins")),
                     _cell(result.get("table_data_size", result.get("table_data_size_bytes"))),
                     _cell(result.get("elapsed_seconds")),
                     _cell(result.get("query_count")),

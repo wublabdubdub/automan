@@ -173,8 +173,8 @@ class ReportTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             job_dir = root / "runs/jobs/job-tpch"
-            load_dir = root / "runs/job-tpch-ymatrix_mars3-ct1200-sf10-q1-m0-tpch-load"
-            query_dir = root / "runs/job-tpch-ymatrix_mars3-ct1200-sf10-q1-m0-tpch-query"
+            load_dir = root / "runs/job-tpch-ymatrix_mars3-ct1200-sf10-q1-tpch-load"
+            query_dir = root / "runs/job-tpch-ymatrix_mars3-ct1200-sf10-q1-tpch-query"
             load_dir.mkdir(parents=True)
             query_dir.mkdir(parents=True)
             write_yaml(
@@ -187,7 +187,6 @@ class ReportTest(unittest.TestCase):
                         "tpch_stages": ["tpch-load", "tpch-query"],
                         "scale_factors": [10],
                         "query_streams": [1],
-                        "run_mins": [0],
                     },
                     "targets": [
                         {
@@ -240,7 +239,6 @@ class ReportTest(unittest.TestCase):
                     "compress_threshold": 1200,
                     "scale_factor": 10,
                     "query_streams": 1,
-                    "run_mins": 0,
                     "loaded_tables": 8,
                     "table_data_size": "10 GB",
                     "elapsed_seconds": 123.4,
@@ -261,7 +259,6 @@ class ReportTest(unittest.TestCase):
                     "compress_threshold": 1200,
                     "scale_factor": 10,
                     "query_streams": 1,
-                    "run_mins": 0,
                     "query_count": 22,
                     "avg_ms": 115.8,
                     "p50_ms": 107.9,

@@ -35,7 +35,6 @@ The base config gains explicit data preparation settings:
 tpch:
   scale_factors: [10]
   query_streams: [1]
-  run_mins: [0]
   query_set: standard
   data_dir: benchmarks/tpch/data/sf{scale_factor}
   schema_dir: benchmarks/tpch/schema
@@ -109,10 +108,9 @@ The check output must clearly state whether data will be generated automatically
 `tpch-query` flow:
 
 1. Read the configured query set.
-2. Execute one full 22-query stream when `run_mins: 0`.
-3. Loop streams until duration expires when `run_mins > 0`.
-4. Write per-query outputs and command logs.
-5. Record query count, latency summary, rows returned, errors, qphh-compatible internal throughput, table size, and row counts.
+2. Execute the configured number of complete query streams.
+3. Write per-query outputs and command logs.
+4. Record query count, latency summary, rows returned, errors, qphh-compatible internal throughput, table size, and row counts.
 
 ## CLI And Playbooks
 

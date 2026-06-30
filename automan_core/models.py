@@ -302,7 +302,6 @@ class TpchConfig:
     compress_threshold: list[int]
     scale_factors: list[int]
     query_streams: list[int]
-    run_mins: list[int]
     query_set: str
     data_dir: str
     schema_dir: str
@@ -320,7 +319,6 @@ class TpchRunSpec:
     compress_threshold: int | None
     scale_factor: int
     query_streams: int
-    run_mins: int
     run_dir: Path
     benchmark_dir: Path
     database_dir: Path

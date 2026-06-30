@@ -139,7 +139,6 @@ compress_threshold: [1200, 4096, 8192, 32768]
 tpch:
   scale_factors: [10]
   query_streams: [1]
-  run_mins: [0]
 ```
 
 TPC-H gains a backend configuration block. The default backend is the YMatrix

@@ -70,7 +70,6 @@ tpch_stages: [tpch-load, tpch-query]
 tpch:
   scale_factors: [1]
   query_streams: [1]
-  run_mins: [0]
   query_set: standard
 ```
 
@@ -202,7 +201,6 @@ class TpchConfig:
     compress_threshold: list[int]
     scale_factors: list[int]
     query_streams: list[int]
-    run_mins: list[int]
     query_set: str
 
 
@@ -215,7 +213,6 @@ class TpchRunSpec:
     compress_threshold: int | None
     scale_factor: int
     query_streams: int
-    run_mins: int
     run_dir: Path
     benchmark_dir: Path
     database_dir: Path
@@ -300,7 +297,7 @@ TPC-H rows include:
 ```python
 "benchmark", "id", "job", "run", "stage", "target", "db_host",
 "ddl_profile", "compress_threshold", "scale_factor", "query_streams",
-"run_mins", "table_data_size", "elapsed_seconds", "qphh",
+"table_data_size", "elapsed_seconds", "qphh",
 "query_count", "avg_ms", "p95_ms", "errors", "session_start",
 "session_end", "result_dir"
 ```

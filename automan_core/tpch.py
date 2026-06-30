@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import shlex
-import time
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -77,7 +76,6 @@ def load_tpch_config(vars_: dict[str, Any]) -> TpchConfig:
         compress_threshold=_int_list(vars_.get("compress_threshold", []), "compress_threshold"),
         scale_factors=_int_list(raw.get("scale_factors", []), "tpch.scale_factors"),
         query_streams=_int_list(raw.get("query_streams", []), "tpch.query_streams"),
-        run_mins=_int_list(raw.get("run_mins", []), "tpch.run_mins"),
         query_set=str(raw.get("query_set", "standard")),
         data_dir=str(raw.get("data_dir", "benchmarks/tpch/data/sf{scale_factor}")),
         schema_dir=str(raw.get("schema_dir", "benchmarks/tpch/schema")),
@@ -121,7 +119,6 @@ def validate_tpch_config(config: TpchConfig, targets: list[Target]) -> list[Any]
     messages.extend(_validate_positive_list("compress_threshold", config.compress_threshold))
     messages.extend(_validate_positive_list("tpch.scale_factors", config.scale_factors))
     messages.extend(_validate_positive_list("tpch.query_streams", config.query_streams))
-    messages.extend(_validate_positive_list("tpch.run_mins", config.run_mins, allow_zero=True))
     if config.query_set:
         messages.append(ValidationMessage("OK", f"tpch.query_set: {config.query_set}"))
     else:
@@ -147,28 +144,26 @@ def build_tpch_run_specs(root: Path, job_id: str, targets: list[Target], config:
         for threshold in thresholds:
             for scale_factor in config.scale_factors:
                 for query_streams in config.query_streams:
-                    for run_mins in config.run_mins:
-                        for stage_name in stages:
-                            ct_part = f"-ct{threshold}" if threshold is not None else ""
-                            run_id = f"{job_id}-{target.id}{ct_part}-sf{scale_factor}-q{query_streams}-m{run_mins}-{stage_name}"
-                            run_dir = root / "runs" / run_id
-                            specs.append(
-                                TpchRunSpec(
-                                    run_id=run_id,
-                                    target_id=target.id,
-                                    stage=stage_name,
-                                    ddl_profile=ddl_profile,
-                                    compress_threshold=threshold,
-                                    scale_factor=scale_factor,
-                                    query_streams=query_streams,
-                                    run_mins=run_mins,
-                                    run_dir=run_dir,
-                                    benchmark_dir=run_dir / "benchmark" / stage_name,
-                                    database_dir=run_dir / "database",
-                                    logs_dir=run_dir / "logs",
-                                    collector_dir=run_dir / "collectors",
-                                )
+                    for stage_name in stages:
+                        ct_part = f"-ct{threshold}" if threshold is not None else ""
+                        run_id = f"{job_id}-{target.id}{ct_part}-sf{scale_factor}-q{query_streams}-{stage_name}"
+                        run_dir = root / "runs" / run_id
+                        specs.append(
+                            TpchRunSpec(
+                                run_id=run_id,
+                                target_id=target.id,
+                                stage=stage_name,
+                                ddl_profile=ddl_profile,
+                                compress_threshold=threshold,
+                                scale_factor=scale_factor,
+                                query_streams=query_streams,
+                                run_dir=run_dir,
+                                benchmark_dir=run_dir / "benchmark" / stage_name,
+                                database_dir=run_dir / "database",
+                                logs_dir=run_dir / "logs",
+                                collector_dir=run_dir / "collectors",
                             )
+                        )
     return specs
 
 
@@ -193,7 +188,6 @@ def write_tpch_job_files(
             "tpch_stages": config.stages,
             "scale_factors": config.scale_factors,
             "query_streams": config.query_streams,
-            "run_mins": config.run_mins,
         },
         "tpch": {
             **asdict(config),
@@ -321,7 +315,6 @@ def _run_dict(run: TpchRunSpec) -> dict[str, Any]:
         "compress_threshold": run.compress_threshold,
         "scale_factor": run.scale_factor,
         "query_streams": run.query_streams,
-        "run_mins": run.run_mins,
         "run_dir": str(run.run_dir),
         "resolved_task_path": str(run.run_dir / "resolved-task.yaml"),
         "status_path": str(run.run_dir / "status.json"),
@@ -480,15 +473,10 @@ def _run_tpch_query(root: Path, target: Target, config: TpchConfig, run: TpchRun
     rows_returned = 0
     errors: list[str] = []
     query_count = 0
-    deadline = time.time() + (run.run_mins * 60) if run.run_mins > 0 else None
     stream_index = 0
-    while True:
-        if deadline is not None and time.time() >= deadline:
-            break
+    while stream_index < run.query_streams:
         stream_index += 1
         for sql_file in sql_files:
-            if deadline is not None and query_count > 0 and time.time() >= deadline:
-                break
             sql = render_sql_template(sql_file.read_text(encoding="utf-8"), {"schema": "public"})
             output_path = run.benchmark_dir / "outputs" / f"stream{stream_index:03d}-{sql_file.stem}.out"
             elapsed_ms, row_count, error, result = timed_sql(target, sql, runner, timeout=7200, output_path=output_path)
@@ -499,11 +487,6 @@ def _run_tpch_query(root: Path, target: Target, config: TpchConfig, run: TpchRun
             else:
                 timings.append(elapsed_ms)
                 rows_returned += row_count
-        if deadline is None:
-            if stream_index >= run.query_streams:
-                break
-        elif time.time() >= deadline:
-            break
     ended = datetime.now().isoformat()
     elapsed_seconds = _elapsed_seconds(started, ended)
     size = relation_size(target, TPCH_TABLES.keys(), runner)
@@ -676,7 +659,6 @@ def _result_base(run: TpchRunSpec) -> dict[str, Any]:
         "compress_threshold": run.compress_threshold,
         "scale_factor": run.scale_factor,
         "query_streams": run.query_streams,
-        "run_mins": run.run_mins,
     }
 
 

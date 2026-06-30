@@ -399,7 +399,6 @@ class FakeYMatrixBackend:
             "scale_factor": run.scale_factor,
             "compress_threshold": run.compress_threshold,
             "query_streams": run.query_streams,
-            "run_mins": run.run_mins,
             "elapsed_seconds": 1.0,
             "upstream_artifacts": {"local_dir": str(run.benchmark_dir / "upstream")},
         }

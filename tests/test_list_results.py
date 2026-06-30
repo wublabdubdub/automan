@@ -141,7 +141,7 @@ class ListResultsTest(unittest.TestCase):
             tpcc_job = root / "runs/jobs/tpcc-job"
             tpch_job = root / "runs/jobs/tpch-job"
             tpcc_run = root / "runs/tpcc-job-pg-w100-c100"
-            tpch_run = root / "runs/tpch-job-ymatrix_mars3-ct1200-sf1-q1-m0-tpch-query"
+            tpch_run = root / "runs/tpch-job-ymatrix_mars3-ct1200-sf1-q1-tpch-query"
             tpcc_run.mkdir(parents=True)
             tpch_run.mkdir(parents=True)
             write_yaml(
