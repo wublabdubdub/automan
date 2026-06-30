@@ -196,6 +196,8 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertFalse(remote.upload_dir_called)
             self.assertTrue(any(call[0].name == "ymatrix-tpch.tar.gz" and call[1].endswith("/ymatrix-tpch.tar.gz") for call in remote.upload_file_calls))
             self.assertTrue(any("tar -xzf ymatrix-tpch.tar.gz" in command for command in remote.run_commands))
+            self.assertTrue(any("./rollout.sh" in command for command in remote.run_commands))
+            self.assertFalse(any("bash ./tpch.sh" in command for command in remote.run_commands))
 
     def test_tpch_inventory_validates_and_plans_three_ddl_profiles(self) -> None:
         repo = Path(__file__).resolve().parents[1]

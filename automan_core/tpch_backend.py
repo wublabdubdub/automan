@@ -59,6 +59,13 @@ def remote_backend_dir(target: Target, backend: TpchBackendConfig, run: TpchRunS
 
 
 def render_backend_variables(target: Target, backend: TpchBackendConfig, run: TpchRunSpec) -> str:
+    variables = _backend_variables(target, backend, run)
+    lines = [f'export {name}="{_escape(value)}"' for name, value in variables.items() if name.startswith("PG")]
+    lines.extend(f'{name}="{_escape(value)}"' for name, value in variables.items() if not name.startswith("PG"))
+    return "\n".join(lines) + "\n"
+
+
+def _backend_variables(target: Target, backend: TpchBackendConfig, run: TpchRunSpec) -> dict[str, str]:
     remote_dir = remote_backend_dir(target, backend, run)
     storage = render_mars3_storage(run.compress_threshold)
     variables: dict[str, str] = {
@@ -92,9 +99,7 @@ def render_backend_variables(target: Target, backend: TpchBackendConfig, run: Tp
         "PURE_SCRIPT_MODE": "true",
     }
     variables.update(stage_flags(run.stage))
-    lines = [f'export {name}="{_escape(value)}"' for name, value in variables.items() if name.startswith("PG")]
-    lines.extend(f'{name}="{_escape(value)}"' for name, value in variables.items() if not name.startswith("PG"))
-    return "\n".join(lines) + "\n"
+    return variables
 
 
 def normalize_backend_result(
@@ -191,11 +196,7 @@ class YMatrixTpchBackend:
             ended = datetime.now().isoformat()
             return _failed_backend_result(run, remote_dir, artifact_dir, started, ended, _command_error(upload_vars) or "remote variable upload failed")
 
-        command = (
-            f"cd {shlex.quote(remote_dir)} && "
-            "chmod +x ./tpch.sh ./rollout.sh && "
-            "bash ./tpch.sh"
-        )
+        command = _rollout_command(remote_dir, target, backend, run)
         run_result = client.run(command, timeout=172800)
         _write_command(run.logs_dir, "ymatrix-backend-run", run_result)
         fetch = client.download_dir(remote_dir, artifact_dir)
@@ -218,6 +219,55 @@ def _default_remote_client(target: Target, backend: TpchBackendConfig) -> Remote
         port=connection.ssh_port,
         user=connection.ssh_user,
         password=connection.ssh_password,
+    )
+
+
+def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig, run: TpchRunSpec) -> str:
+    variables = _backend_variables(target, backend, run)
+    exports = " ".join(
+        f"{name}={shlex.quote(value)}"
+        for name, value in variables.items()
+        if name.startswith("PG") or name == "GREENPLUM_PATH"
+    )
+    args = [
+        variables["GEN_DATA_SCALE"],
+        variables["EXPLAIN_ANALYZE"],
+        variables["RANDOM_DISTRIBUTION"],
+        variables["MULTI_USER_COUNT"],
+        variables["RUN_COMPILE_TPCH"],
+        variables["RUN_GEN_DATA"],
+        variables["RUN_INIT"],
+        variables["RUN_DDL"],
+        variables["RUN_LOAD"],
+        variables["RUN_SQL"],
+        variables["RUN_SINGLE_USER_REPORT"],
+        variables["RUN_MULTI_USER"],
+        variables["RUN_MULTI_USER_REPORT"],
+        variables["SINGLE_USER_ITERATIONS"],
+        variables["GREENPLUM_PATH"],
+        variables["SMALL_STORAGE"],
+        variables["MEDIUM_STORAGE"],
+        variables["LARGE_STORAGE"],
+        variables["CREATE_TBL"],
+        variables["OPTIMIZER"],
+        variables["GEN_DATA_DIR"],
+        variables["EXT_HOST_DATA_DIR"],
+        variables["ADD_FOREIGN_KEY"],
+        variables["TPCH_RUN_ID"],
+        variables["TPCH_SESSION_GUCS"],
+        variables["PREHEATING_DATA"],
+        variables["DATABASE_TYPE"],
+        variables["LOAD_DATA_TYPE"],
+        variables["PURE_SCRIPT_MODE"],
+    ]
+    rendered_args = " ".join(shlex.quote(arg) for arg in args)
+    return (
+        f"cd {shlex.quote(remote_dir)} && "
+        "{ "
+        "chmod +x ./rollout.sh ./0*/rollout.sh ./01_gen_data/generate_data.sh ./01_gen_data/generate_queries.sh "
+        "./04_load/*.sh 2>/dev/null || true; "
+        f"{exports} ./rollout.sh {rendered_args}; "
+        "}"
     )
 
 
