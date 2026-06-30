@@ -198,7 +198,7 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertFalse(remote.upload_dir_called)
             self.assertTrue(any(call[0].name == "ymatrix-tpch.tar.gz" and call[1].endswith("/ymatrix-tpch.tar.gz") for call in remote.upload_file_calls))
             self.assertTrue(any("tar -xzf ymatrix-tpch.tar.gz" in command for command in remote.run_commands))
-            self.assertTrue(any("sed -i 's/\\r$//'" in command for command in remote.run_commands))
+            self.assertTrue(any("sed -i 's/\\r$//'" in command and "dists.dss" in command for command in remote.run_commands))
             self.assertTrue(any("./rollout.sh" in command for command in remote.run_commands))
             self.assertTrue(any("seq 1 60" in command and "select 1" in command for command in remote.run_commands))
             self.assertTrue(any("mkdir -p" in command and "/generated/log" in command for command in remote.run_commands))

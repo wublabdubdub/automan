@@ -295,6 +295,10 @@ def _normalize_remote_scripts_command() -> str:
     patterns = " ".join(
         [
             "-name '*.sh'",
+            "-o -name '*.c'",
+            "-o -name '*.h'",
+            "-o -name '*.sql'",
+            "-o -name 'dists.dss'",
             "-o -name 'Makefile'",
             "-o -name 'makefile'",
             "-o -name 'GNUmakefile'",
