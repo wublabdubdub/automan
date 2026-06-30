@@ -275,6 +275,7 @@ def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig
         rendered_args = rendered_args.replace("''", '"${GREENPLUM_PATH:-}"', 1)
     gen_data_dir = shlex.quote(variables["GEN_DATA_DIR"])
     ext_host_data_dir = shlex.quote(variables["EXT_HOST_DATA_DIR"])
+    segment_ext_dirs = _prepare_segment_ext_dirs_command(variables["DATABASE_TYPE"], ext_host_data_dir)
     return (
         f"{exports}; {greenplum_setup}; "
         f"cd {shlex.quote(remote_dir)} && "
@@ -282,6 +283,7 @@ def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig
         "chmod +x ./rollout.sh ./0*/rollout.sh ./01_gen_data/generate_data.sh ./01_gen_data/generate_queries.sh "
         "./04_load/*.sh 2>/dev/null || true; "
         f"mkdir -p {gen_data_dir}/log {ext_host_data_dir}; "
+        f"{segment_ext_dirs}; "
         f"./rollout.sh {rendered_args}; "
         "}"
     )
@@ -297,6 +299,17 @@ def _normalize_remote_scripts_command() -> str:
         ]
     )
     return f"find . -type f \\( {patterns} \\) -exec sed -i 's/\\r$//' {{}} +"
+
+
+def _prepare_segment_ext_dirs_command(database_type: str, ext_host_data_dir: str) -> str:
+    query = "select distinct hostname from gp_segment_configuration where content >= 0 order by 1"
+    return (
+        f"if [ {shlex.quote(database_type)} = matrixdb ]; then "
+        f"for host in $(psql -Atc {shlex.quote(query)}); do "
+        f"ssh -o StrictHostKeyChecking=no \"$host\" mkdir -p {ext_host_data_dir}; "
+        "done; "
+        "fi"
+    )
 
 
 def _failed_backend_result(run: TpchRunSpec, remote_dir: str, artifact_dir: Path, started: str, ended: str, error: str) -> dict[str, Any]:
