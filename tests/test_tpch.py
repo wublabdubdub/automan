@@ -110,6 +110,7 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertIn('GEN_DATA_SCALE="1"', variables)
             self.assertIn('LOAD_DATA_TYPE="mxgate"', variables)
             self.assertIn('SMALL_STORAGE="USING mars3 with (compresstype=zstd, compresslevel=2, compress_threshold=1200)"', variables)
+            self.assertIn("TPCH_SESSION_GUCS=\"set statement_mem to '1GB';\"", variables)
             self.assertIn('RUN_LOAD="true"', variables)
             self.assertIn('RUN_SQL="false"', variables)
 

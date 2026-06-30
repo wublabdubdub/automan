@@ -293,6 +293,7 @@ class TpchBackendConfig:
     preheating_data: bool = True
     explain_analyze: bool = False
     greenplum_path: str = ""
+    session_gucs: str = "set statement_mem to '1GB';"
 
 
 @dataclass(frozen=True)

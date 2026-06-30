@@ -27,6 +27,7 @@ all:
         preheating_data: true
         explain_analyze: false
         greenplum_path: ""
+        session_gucs: "set statement_mem to '1GB';"
       data_prepare:
         mode: auto
         generator: dbgen

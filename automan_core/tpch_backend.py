@@ -95,7 +95,7 @@ def _backend_variables(target: Target, backend: TpchBackendConfig, run: TpchRunS
         "DATABASE_TYPE": backend.database_type,
         "LOAD_DATA_TYPE": backend.load_data_type,
         "TPCH_RUN_ID": _safe_run_id(run.run_id),
-        "TPCH_SESSION_GUCS": "",
+        "TPCH_SESSION_GUCS": backend.session_gucs,
         "PURE_SCRIPT_MODE": "true",
     }
     variables.update(stage_flags(run.stage))
