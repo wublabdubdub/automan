@@ -19,6 +19,12 @@ PHASE_ACTIONS = {
     "runDatabaseDestroy.sh": "destroy",
     "runDatabaseBuild.sh": "load",
     "runBenchmark.sh": "test",
+    "ts-write": "write",
+    "ts-query": "query",
+    "point-query": "point-query",
+    "ap-query": "ap-query",
+    "tpch-load": "tpch-load",
+    "tpch-query": "tpch-query",
     "report": "report",
 }
 
@@ -39,7 +45,7 @@ def show_progress(root: Path, job_id: str | None = None, watch_seconds: int | No
 def _show_once(root: Path, job_id: str | None) -> int:
     selection = _select_job(root, job_id)
     if selection["status"] == "missing":
-        print("[FAIL] no TPC-C job found under runs/jobs")
+        print("[FAIL] no Automan job found under runs/jobs")
         return 1
     if selection["status"] == "ambiguous":
         print("[FAIL] multiple running TPC-C jobs found")
@@ -71,7 +77,9 @@ def _show_once(root: Path, job_id: str | None) -> int:
     _print_total(job_state, plan)
     if status == "failed":
         _print_failure_hint(root, plan, job_state)
-    print(f"[HINT] completed results: ./automan list --job {job_name}")
+    benchmark = str(plan.get("benchmark", "tpcc"))
+    type_arg = "" if benchmark == "tpcc" else f" -t {benchmark}"
+    print(f"[HINT] completed results: ./automan list{type_arg} --job {job_name}")
     return 0
 
 
@@ -183,14 +191,47 @@ def _print_active_run(root: Path, job_dir: Path, plan: dict[str, Any], active: d
     phase = str(status.get("phase") or active.get("target_state", {}).get("current_phase") or "-")
     action = PHASE_ACTIONS.get(phase, phase)
 
-    print(
-        "[ OK ] run: "
-        f"{stable_result_id(job_id, run_id)} "
-        f"target={run.get('target_id', '-')} "
-        f"host={connection.get('db_host', '-')} "
-        f"wh={run.get('warehouse', '-')} "
-        f"terminals={run.get('terminals', '-')}"
-    )
+    benchmark = str(plan.get("benchmark", "tpcc"))
+    if benchmark == "ts" or run.get("stage") in {"ts-write", "ts-query", "point-query"}:
+        print(
+            "[ OK ] run: "
+            f"{stable_result_id(job_id, run_id)} "
+            f"stage={run.get('stage', '-')} "
+            f"target={run.get('target_id', '-')} "
+            f"host={connection.get('db_host', '-')} "
+            f"table={run.get('target_table', '-')} "
+            f"ct={run.get('compress_threshold', '-')}"
+        )
+    elif benchmark == "ap" or run.get("stage") == "ap-query":
+        print(
+            "[ OK ] run: "
+            f"{stable_result_id(job_id, run_id)} "
+            f"stage={run.get('stage', '-')} "
+            f"target={run.get('target_id', '-')} "
+            f"host={connection.get('db_host', '-')} "
+            f"table={run.get('source_table', '-')} "
+            f"ct={run.get('compress_threshold', '-')}"
+        )
+    elif benchmark == "tpch" or run.get("stage") in {"tpch-load", "tpch-query"}:
+        print(
+            "[ OK ] run: "
+            f"{stable_result_id(job_id, run_id)} "
+            f"stage={run.get('stage', '-')} "
+            f"target={run.get('target_id', '-')} "
+            f"host={connection.get('db_host', '-')} "
+            f"ddl={run.get('ddl_profile', '-')} "
+            f"ct={run.get('compress_threshold', '-')} "
+            f"sf={run.get('scale_factor', '-')}"
+        )
+    else:
+        print(
+            "[ OK ] run: "
+            f"{stable_result_id(job_id, run_id)} "
+            f"target={run.get('target_id', '-')} "
+            f"host={connection.get('db_host', '-')} "
+            f"wh={run.get('warehouse', '-')} "
+            f"terminals={run.get('terminals', '-')}"
+        )
     timing = _phase_timing(root, job_dir, run, phase, status)
     fields = [f"phase: {phase}", f"action={action}", f"elapsed={_format_duration(timing.get('elapsed_seconds'))}"]
     if phase == "runBenchmark.sh":

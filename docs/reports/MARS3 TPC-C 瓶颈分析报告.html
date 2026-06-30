@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MARS3 TPC-C 瓶颈分析报告</title>
+  <style>
+    :root {
+      --ink: #111;
+      --muted: #555;
+      --line: #222;
+      --soft: #e5e5e5;
+      --paper: #fff;
+      --shade: #f6f6f6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: SimSun, "Songti SC", "Noto Serif CJK SC", serif;
+      font-size: 16px;
+      line-height: 1.72;
+    }
+    main {
+      width: min(1180px, calc(100% - 56px));
+      margin: 0 auto;
+      padding: 34px 0 64px;
+    }
+    header {
+      border-bottom: 3px double var(--line);
+      padding-bottom: 18px;
+      margin-bottom: 28px;
+    }
+    h1, h2, h3 {
+      margin: 0;
+      font-weight: 700;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+    h1 { font-size: 30px; }
+    h2 {
+      font-size: 22px;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+      margin-top: 34px;
+      margin-bottom: 12px;
+    }
+    h3 {
+      font-size: 18px;
+      margin-top: 22px;
+      margin-bottom: 8px;
+    }
+    p { margin: 8px 0 12px; }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1px;
+      border: 1px solid var(--line);
+      margin-top: 18px;
+      background: var(--line);
+    }
+    .meta div {
+      background: var(--paper);
+      padding: 10px 12px;
+      min-height: 58px;
+    }
+    .meta span,
+    .caption,
+    .note,
+    figcaption {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .meta strong {
+      display: block;
+      margin-top: 2px;
+      font-size: 15px;
+      word-break: break-all;
+    }
+    .lead {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 22px;
+      align-items: stretch;
+    }
+    .box {
+      border: 1px solid var(--line);
+      padding: 16px 18px;
+      background: var(--paper);
+    }
+    .box.shade { background: var(--shade); }
+    .verdict {
+      font-size: 20px;
+      line-height: 1.6;
+      font-weight: 700;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      table-layout: fixed;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 9px;
+      vertical-align: top;
+      word-break: break-word;
+    }
+    th {
+      background: var(--shade);
+      font-weight: 700;
+      text-align: left;
+    }
+    td.num, th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      background: var(--line);
+      gap: 1px;
+      margin: 14px 0 18px;
+    }
+    .kpi {
+      background: var(--paper);
+      padding: 14px;
+      min-height: 118px;
+    }
+    .kpi span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .kpi strong {
+      display: block;
+      margin: 6px 0;
+      font-size: 27px;
+      line-height: 1.1;
+      font-family: "Times New Roman", SimSun, serif;
+    }
+    .barcell {
+      display: grid;
+      grid-template-columns: 84px 1fr;
+      gap: 8px;
+      align-items: center;
+    }
+    .bar {
+      height: 10px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      position: relative;
+    }
+    .bar i {
+      display: block;
+      height: 100%;
+      background: var(--ink);
+    }
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+    }
+    code {
+      background: var(--shade);
+      border: 1px solid var(--soft);
+      padding: 1px 4px;
+    }
+    pre {
+      border: 1px solid var(--line);
+      background: var(--shade);
+      padding: 12px;
+      overflow: auto;
+      line-height: 1.5;
+    }
+    ol, ul { padding-left: 22px; }
+    li { margin: 4px 0; }
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    .mono-list li {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .small { font-size: 14px; }
+    .page-note {
+      border-top: 1px solid var(--line);
+      margin-top: 34px;
+      padding-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (max-width: 860px) {
+      main { width: min(100% - 28px, 1180px); }
+      .lead, .two-col, .meta, .kpi-grid { grid-template-columns: 1fr; }
+      table { table-layout: auto; }
+      h1 { font-size: 24px; }
+    }
+    @media print {
+      main { width: 100%; padding: 0; }
+      h2 { break-after: avoid; }
+      table, .box, .kpi-grid { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>MARS3 TPC-C 瓶颈分析报告</h1>
+    <p class="caption">基于 172.16.100.143:/root/automan 的 BenchmarkSQL 结果、runBenchmark 阶段资源采集、perf report，以及 MARS3/heap update 路径源码分析。</p>
+    <div class="meta">
+      <div><span>测试对象</span><strong>YMatrix MARS3 master-only</strong></div>
+      <div><span>数据库主机</span><strong>192.168.100.30</strong></div>
+      <div><span>数据规模</span><strong>100 warehouses / 15 min</strong></div>
+      <div><span>报告日期</span><strong>2026-06-30</strong></div>
+    </div>
+  </header>
+
+  <section class="lead">
+    <div class="box shade">
+      <h2 style="border-top:0;margin-top:0;padding-top:0">总体判断</h2>
+      <p class="verdict">MARS3 在本轮 TPC-C 中的瓶颈不是磁盘写满，而是高频 UPDATE 被拆成多次 delta btree、rowstore、MARS3 btree index 和 update-chain 回填后，CPU、run queue、buffer pin 和 LWLock 被系统性放大。</p>
+      <p>100 并发时 CPU 已经接近饱和；500 并发后吞吐下降、延迟暴涨、postgres 进程 wait 升高；1000 并发时有效吞吐进一步塌陷，延迟 p95 达到 82 秒量级，并出现阶段性 CPU 空转与等待交替。</p>
+    </div>
+    <div class="box">
+      <h2 style="border-top:0;margin-top:0;padding-top:0">最关键的证据</h2>
+      <ul>
+        <li>tpmC 从 100 并发的 7317.81 降到 500 的 3158.26，再降到 1000 的 1660.07。</li>
+        <li>500 并发整体延迟 p95 为 15.22 秒，1000 并发整体延迟 p95 为 82.46 秒。</li>
+        <li>iowait 基本为 0%，主盘 sdb 平均 util 只有 9.51% 到 24.22%。</li>
+        <li>perf 热点稳定出现 <code>_BTGetRoot</code>、<code>ReadBufferExtended</code>、<code>ReadBuffer_common</code>、<code>LWLockAcquire</code>、<code>PinBuffer</code>。</li>
+      </ul>
+    </div>
+  </section>
+
+  <h2>1. 测试结果与退化曲线</h2>
+  <table>
+    <thead>
+      <tr>
+        <th class="num">Terminals</th>
+        <th class="num">tpmC</th>
+        <th class="num">tpmTOTAL</th>
+        <th>Start Time</th>
+        <th>End Time</th>
+        <th>相对 100 并发</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num">100</td>
+        <td class="num">7,317.81</td>
+        <td class="num">16,569.88</td>
+        <td>2026-06-29 21:23:59</td>
+        <td>2026-06-29 21:39:04</td>
+        <td>基线</td>
+      </tr>
+      <tr>
+        <td class="num">500</td>
+        <td class="num">3,158.26</td>
+        <td class="num">7,152.56</td>
+        <td>2026-06-29 21:51:21</td>
+        <td>2026-06-29 22:06:25</td>
+        <td>-56.84%</td>
+      </tr>
+      <tr>
+        <td class="num">1000</td>
+        <td class="num">1,660.07</td>
+        <td class="num">3,775.38</td>
+        <td>2026-06-29 22:13:07</td>
+        <td>2026-06-29 22:28:16</td>
+        <td>-77.31%</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="kpi-grid">
+    <div class="kpi">
+      <span>500 并发吞吐下降</span>
+      <strong>-56.84%</strong>
+      <p class="small">并发提升 5 倍后，tpmC 不是上升而是折半。</p>
+    </div>
+    <div class="kpi">
+      <span>1000 并发 NEW_ORDER p95</span>
+      <strong>97.22s</strong>
+      <p class="small">核心事务已进入长尾等待区间。</p>
+    </div>
+    <div class="kpi">
+      <span>1000 并发主盘平均 util</span>
+      <strong>9.51%</strong>
+      <p class="small">磁盘远未成为主瓶颈。</p>
+    </div>
+  </div>
+
+  <h2>2. 资源采集结论</h2>
+  <h3>2.1 CPU、run queue 与 IO</h3>
+  <table>
+    <thead>
+      <tr>
+        <th class="num">Terminals</th>
+        <th class="num">CPU busy avg</th>
+        <th class="num">CPU busy p95</th>
+        <th class="num">run queue avg</th>
+        <th class="num">run queue p95</th>
+        <th class="num">iowait avg</th>
+        <th class="num">sdb util avg</th>
+        <th class="num">sdb write avg</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num">100</td>
+        <td class="num">89.50%</td>
+        <td class="num">98.71%</td>
+        <td class="num">80.49</td>
+        <td class="num">108.00</td>
+        <td class="num">0.002%</td>
+        <td class="num">24.22%</td>
+        <td class="num">68.35 MB/s</td>
+      </tr>
+      <tr>
+        <td class="num">500</td>
+        <td class="num">92.07%</td>
+        <td class="num">99.68%</td>
+        <td class="num">204.70</td>
+        <td class="num">372.40</td>
+        <td class="num">0.002%</td>
+        <td class="num">13.54%</td>
+        <td class="num">87.47 MB/s</td>
+      </tr>
+      <tr>
+        <td class="num">1000</td>
+        <td class="num">34.03%</td>
+        <td class="num">99.59%</td>
+        <td class="num">55.52</td>
+        <td class="num">271.75</td>
+        <td class="num">0.016%</td>
+        <td class="num">9.51%</td>
+        <td class="num">138.75 MB/s</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>100 和 500 并发的 CPU 平均值已经接近饱和，run queue 明显超过 64 核规模。1000 并发平均 CPU 反而降低，但 p95 仍接近 100%，说明系统不是稳定地把 CPU 用在有效事务上，而是在排队、等待、异常和阶段性空转之间摆动。</p>
+  <p>三个并发档的 iowait 都接近 0；sdb 平均 util 最高只有 24.22%。这排除了“磁盘写满导致吞吐掉下去”的主因。</p>
+
+  <h3>2.2 BenchmarkSQL 延迟</h3>
+  <table>
+    <thead>
+      <tr>
+        <th class="num">Terminals</th>
+        <th class="num">整体 p50</th>
+        <th class="num">整体 p95</th>
+        <th class="num">整体 p99</th>
+        <th class="num">NEW_ORDER p95</th>
+        <th class="num">PAYMENT p95</th>
+        <th class="num">DELIVERY_BG p95</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num">100</td>
+        <td class="num">203 ms</td>
+        <td class="num">1,081 ms</td>
+        <td class="num">3,025 ms</td>
+        <td class="num">620 ms</td>
+        <td class="num">577 ms</td>
+        <td class="num">5,407 ms</td>
+      </tr>
+      <tr>
+        <td class="num">500</td>
+        <td class="num">1,816 ms</td>
+        <td class="num">15,224 ms</td>
+        <td class="num">28,924 ms</td>
+        <td class="num">13,725 ms</td>
+        <td class="num">17,349 ms</td>
+        <td class="num">27,503 ms</td>
+      </tr>
+      <tr>
+        <td class="num">1000</td>
+        <td class="num">3,052 ms</td>
+        <td class="num">82,462 ms</td>
+        <td class="num">203,957 ms</td>
+        <td class="num">97,220 ms</td>
+        <td class="num">96,513 ms</td>
+        <td class="num">29,746 ms</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>吞吐下降与延迟长尾同步出现。500 并发时 NEW_ORDER 和 PAYMENT 已经从亚秒级 p95 变成十几秒；1000 并发时核心事务 p95 接近 100 秒，说明客户端并发增加后，大部分时间转化为排队和内部等待。</p>
+
+  <h3>2.3 postgres 进程等待</h3>
+  <table>
+    <thead>
+      <tr>
+        <th class="num">Terminals</th>
+        <th class="num">postgres 平均 CPU/进程</th>
+        <th class="num">postgres 平均 wait/进程</th>
+        <th>解读</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num">100</td>
+        <td class="num">55.80%</td>
+        <td class="num">17.50%</td>
+        <td>CPU 已很忙，但仍能完成较多有效事务。</td>
+      </tr>
+      <tr>
+        <td class="num">500</td>
+        <td class="num">18.71%</td>
+        <td class="num">43.29%</td>
+        <td>大量 backend 不再持续执行，而是在等待锁、buffer 或调度。</td>
+      </tr>
+      <tr>
+        <td class="num">1000</td>
+        <td class="num">10.43%</td>
+        <td class="num">13.65%</td>
+        <td>有效执行进一步减少，配合 p95 延迟说明系统进入低吞吐长等待状态。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>3. perf 热点与源码路径对应</h2>
+  <p>perf report 中反复出现的热点不是单纯的 SQL executor 开销，而是 MARS3 update 路径里的 btree、buffer 和 lock 成本。</p>
+  <table>
+    <thead>
+      <tr>
+        <th>perf 观察</th>
+        <th>对应源码路径</th>
+        <th>含义</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>mars3::btree::BtreeRun::_BTGetRoot</code><br><code>mars3::btree::BtreeRun::_BTSearch</code></td>
+        <td>DeltaTree 查询/插入、MARS3 btree index 插入时的 root-to-leaf 搜索。</td>
+        <td>每次 update 不是只改一个 heap tuple header，而是反复进入内部 btree。</td>
+      </tr>
+      <tr>
+        <td><code>ReadBufferExtended</code><br><code>ReadBuffer_common</code></td>
+        <td>读取 MARS3 fork 中的 root/internal/leaf/delta page。</td>
+        <td>buffer 访问次数被 delta tree 和索引维护放大。</td>
+      </tr>
+      <tr>
+        <td><code>PinBuffer</code><br><code>UnpinBuffer</code><br><code>LWLockAcquire</code></td>
+        <td>buffer pin、content lock、btree page lock。</td>
+        <td>高并发下 root page、leaf page 和 delta item page 变成共享争用点。</td>
+      </tr>
+      <tr>
+        <td><code>mars3::DeltaTree::~DeltaTree</code></td>
+        <td>短事务下 RunModifier/DeltaTree 创建销毁和资源清理。</td>
+        <td>事务频率越高，生命周期管理成本越容易在 perf 中显形。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.1 代表性 perf 片段</h3>
+  <pre>c500 / perf-002.report.txt
+44.33%  postgres  matrixts.so  mars3::btree::BtreeRun&lt;...&gt;::_BTGetRoot
+44.22%  postgres  matrixts.so  mars3::DeltaTree::~DeltaTree
+37.70%  postgres  postgres    ReadBufferExtended
+37.37%  postgres  postgres    ReadBuffer_common
+22.70%  postgres  postgres    PinBuffer
+18.13%  postgres  postgres    LWLockAcquire
+15.38%  postgres  postgres    UnpinBuffer.constprop.0</pre>
+  <p>这些符号与资源侧现象一致：CPU 忙、run queue 高、iowait 低、磁盘 util 不高。瓶颈在 CPU 上执行大量 btree/buffer/lock 逻辑，而不是等待块设备返回。</p>
+
+  <h2>4. MARS3 与 heap update 的结构性差异</h2>
+  <div class="two-col">
+    <div class="box">
+      <h3>MARS3 update 路径</h3>
+      <ol>
+        <li><code>TupleUpdateExtended()</code> 先调用 <code>TupleDeleteInternal(..., update=true)</code> 删除旧版本。</li>
+        <li>旧 tuple 状态写入 DeltaItem，DeltaItem 存在 DeltaTree 中。</li>
+        <li>DeltaTree 是内部 btree，查旧版本需要 root-to-leaf 搜索。</li>
+        <li>新版本通过 rowstore 追加写入，并立即获得 ctid。</li>
+        <li>为新 tuple 插入 MARS3 btree index，随机 TPC-C update 很难只走 rightmost fastpath。</li>
+        <li>最后 <code>SetNewRowCtid()</code> 再查一次旧 DeltaItem，回填 next ctid。</li>
+      </ol>
+    </div>
+    <div class="box">
+      <h3>heap update 路径</h3>
+      <ol>
+        <li>heap 也写新版本，但 update chain 和可见性信息在 heap tuple header 中。</li>
+        <li>如果没有修改索引相关列且同页有空间，可以 HOT update。</li>
+        <li>HOT update 后旧 tuple 设置 hot-updated，新 tuple 设置 heap-only。</li>
+        <li>table AM handler 会避免为 heap-only tuple 插入新 index entries。</li>
+        <li>未改 key attrs 时，heap 可以使用较弱 tuple lock。</li>
+      </ol>
+    </div>
+  </div>
+
+  <h3>4.1 为什么 MARS3 更烧 CPU</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>差异点</th>
+        <th>heap</th>
+        <th>MARS3</th>
+        <th>对 TPC-C 的影响</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>旧版本状态</td>
+        <td>写在 heap tuple header 的 <code>xmax/cmax/infomask/t_ctid</code>。</td>
+        <td>写 DeltaItem，DeltaItem 在 DeltaTree btree 中。</td>
+        <td>每次 update 增加 delta btree 搜索和 buffer lock。</td>
+      </tr>
+      <tr>
+        <td>索引维护</td>
+        <td>符合条件时 HOT update，不插入新的索引项。</td>
+        <td>固定 delete + insert，新版本需要插入 MARS3 btree index。</td>
+        <td>余额、数量、计数、ytd 等非主键更新仍会放大索引路径。</td>
+      </tr>
+      <tr>
+        <td>update chain</td>
+        <td>旧 tuple 的 <code>t_ctid</code> 指向新 tuple。</td>
+        <td><code>SetNewRowCtid()</code> 回填旧 DeltaItem 的 next。</td>
+        <td>同一次 update 至少两次访问旧 DeltaItem。</td>
+      </tr>
+      <tr>
+        <td>tuple lock</td>
+        <td>可根据是否修改 key attrs 使用较弱锁。</td>
+        <td>当前直接 <code>LockTupleExclusive</code>。</td>
+        <td>高并发下更容易放大 tuple lock、multixact 和 xid 检查成本。</td>
+      </tr>
+      <tr>
+        <td>临界区接触面</td>
+        <td>理想路径主要锁旧 heap page，同页 HOT 最轻。</td>
+        <td>delta btree、rowstore page、MARS3 btree index、delta next 回填。</td>
+        <td>同一条 SQL 接触更多 buffer 和 LWLock。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>5. duplicate key 日志对结果的影响</h2>
+  <p>三档 run 均由 automan 判定为 success，并且 BenchmarkSQL 产出了正式 tpmC。但日志中确实存在大量 <code>duplicate key value violates unique constraint "bmsql_oorder_pkey"</code>。这类错误会影响 TPC-C New Order 语义，应在正式对外结论中单独标注。</p>
+  <table>
+    <thead>
+      <tr>
+        <th class="num">Terminals</th>
+        <th class="num">duplicate key 行</th>
+        <th class="num">oorder_pkey 行</th>
+        <th class="num">Exception/ERROR 行</th>
+        <th>说明</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num">100</td>
+        <td class="num">8,002</td>
+        <td class="num">8,003</td>
+        <td class="num">12,006</td>
+        <td>日志异常已出现，但吞吐相对最高。</td>
+      </tr>
+      <tr>
+        <td class="num">500</td>
+        <td class="num">14,602</td>
+        <td class="num">14,603</td>
+        <td class="num">22,089</td>
+        <td>异常与延迟长尾、吞吐下降同时出现。</td>
+      </tr>
+      <tr>
+        <td class="num">1000</td>
+        <td class="num">12,454</td>
+        <td class="num">12,455</td>
+        <td class="num">18,691</td>
+        <td>有效吞吐很低，异常仍大量存在。</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="note">注：上表按 stdout、stderr 和相关日志文件扫描行数统计，同一异常可能在不同输出中重复出现。它用于判断日志污染和异常规模，不等价于 BenchmarkSQL 事务失败数。</p>
+
+  <h2>6. 瓶颈链路复盘</h2>
+  <ol>
+    <li><strong>TPC-C 高频 UPDATE</strong> 触发 MARS3 的 delete + insert + index insert + next ctid 回填路径。</li>
+    <li><strong>DeltaTree btree 查询</strong> 让旧版本可见性和 update chain 不再是 heap tuple header 本地操作，而变成内部 btree 操作。</li>
+    <li><strong>rowstore 新版本追加写</strong> 需要排他锁数据页，并为每个 MARS3 btree index 插入新项。</li>
+    <li><strong>高并发放大 root/leaf/delta page 争用</strong>，perf 中出现 <code>LWLockAcquire</code>、<code>PinBuffer</code>、<code>ReadBuffer_common</code> 高占比。</li>
+    <li><strong>CPU 和调度队列先被打满</strong>，随后 backend 等待比例上升，事务延迟出现秒级到百秒级长尾。</li>
+    <li><strong>吞吐下降后 IO 利用率不升反降</strong>，进一步证明瓶颈在内部 CPU/lock 路径，而不是块设备。</li>
+  </ol>
+
+  <h2>7. 建议</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>优先级</th>
+        <th>动作</th>
+        <th>目的</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>P0</td>
+        <td>先定位 <code>bmsql_oorder_pkey</code> duplicate key 来源，确认是 BenchmarkSQL 配置、sequence 初始化、并发隔离，还是 MARS3 路径问题。</td>
+        <td>避免在异常语义下解释 tpmC。</td>
+      </tr>
+      <tr>
+        <td>P0</td>
+        <td>用 50、100、150、200、300 terminals 细化拐点，不要只看 500/1000。</td>
+        <td>找到 MARS3 从可用区进入退化区的真实阈值。</td>
+      </tr>
+      <tr>
+        <td>P1</td>
+        <td>补一组相同参数的 heap 与 MARS3 对照，并记录 HOT update 命中情况、索引插入次数、WAL 量。</td>
+        <td>量化 MARS3 update 路径相对 heap 的固定成本。</td>
+      </tr>
+      <tr>
+        <td>P1</td>
+        <td>对 500 并发重新采集完整 perf script 或 flamegraph，并保留未截断脚本。</td>
+        <td>进一步分解 delta btree、MARS3 btree index、rowstore 写入、xid/multixact 的占比。</td>
+      </tr>
+      <tr>
+        <td>P2</td>
+        <td>评估 MARS3 update 是否能引入 heap 类似的 key attrs 判断、弱 lockmode、HOT-like 或 delta item 缓存/合并策略。</td>
+        <td>减少每次 UPDATE 固定走多次 btree/buffer 临界区的结构性成本。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>8. 数据来源</h2>
+  <ul class="mono-list">
+    <li>/root/automan/runs/20260629-mars3-19230-w100-c100-rerun2-ymatrix_mars3-w100-c100</li>
+    <li>/root/automan/runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c500</li>
+    <li>/root/automan/runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000</li>
+    <li>collectors/runBenchmark.sh/database/system: vmstat, iostat -x, mpstat -P ALL, pidstat -durh</li>
+    <li>collectors/runBenchmark.sh/database/perf: perf-001/002/003.report.txt</li>
+    <li>benchmark/result/data/result.csv 和 runInfo.csv</li>
+    <li>源码分析依据：用户提供的 MARS3 update 路径、DeltaTree、rowstore inserter、heap HOT update 对照说明。</li>
+  </ul>
+
+  <p class="page-note">报告口径：本报告只分析 runBenchmark 阶段，不覆盖 load/build 阶段。duplicate key 统计是日志行级扫描，主要用于提示测试语义风险。</p>
+</main>
+</body>
+</html>

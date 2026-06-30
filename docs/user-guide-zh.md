@@ -67,7 +67,7 @@ automan/
 ```bash
 cd /root/automan
 
-./configure -c pg -o automan.yml
+./configure -c ym-mars3 -t tpch -o automan.yml
 ./automan param -i automan.yml
 # 手工检查屏幕输出的修改命令和确认命令，并按需执行
 
@@ -490,24 +490,25 @@ report: action=report
 ./automan list --job <job_id>
 ```
 
-每一行结果都有稳定 ID，例如 `pg31-w100-c500`。这个 ID 来自 run id 去掉 job 前缀，不会因为排序变化而改变。
+每一行结果都有稳定的短 hash ID，例如 `a19f3c8b21`。这个 ID 来自完整 run id 的确定性 hash，不会因为排序变化而改变，并且可直接用于 delete。
 
-删除整个 job 及其关联的 run/work 产物：
+按结果 ID 删除一个或多个 run/work 产物：
 
 ```bash
-./automan delete <job_id>
+./automan delete <id>
+./automan delete <id> <id>
 ```
 
 跳过交互确认：
 
 ```bash
-./automan delete <job_id> -f
+./automan delete <id> <id> -f
 ```
 
 输出字段：
 
 ```text
-ID: 可用于 delete 的稳定 ID
+ID: 可用于 delete 的稳定短 hash ID
 Job: job id
 Finished Results: 已完成并可解析性能结果的 run 数
 TARGET: target id

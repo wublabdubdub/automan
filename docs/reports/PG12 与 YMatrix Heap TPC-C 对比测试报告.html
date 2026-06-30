@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PG12 与 YMatrix Heap TPC-C 对比测试报告</title>
+  <style>
+    :root { --bg: #fff; --fg: #111; --muted: #555; --line: #d9d9d9; --soft: #f5f5f5; --strong: #000; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--fg); }
+    body { font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif; font-size: 15px; line-height: 1.72; }
+    .page { max-width: 1120px; margin: 0 auto; padding: 48px 32px 72px; }
+    header { border-bottom: 2px solid var(--strong); padding-bottom: 18px; margin-bottom: 34px; }
+    .eyebrow { margin: 0 0 6px; color: var(--muted); font-size: 13px; letter-spacing: 0; }
+    h1 { margin: 0; font-size: 30px; line-height: 1.25; font-weight: 700; letter-spacing: 0; }
+    .meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 24px 0 0; background: var(--line); border: 1px solid var(--line); }
+    .meta div { background: var(--bg); padding: 10px 12px; min-width: 0; }
+    .meta span { display: block; color: var(--muted); font-size: 12px; line-height: 1.3; }
+    .meta strong { display: block; margin-top: 3px; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+    h2 { margin: 38px 0 14px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 22px; line-height: 1.35; font-weight: 700; letter-spacing: 0; }
+    h3 { margin: 28px 0 10px; font-size: 18px; line-height: 1.4; font-weight: 700; letter-spacing: 0; }
+    h4, h5, h6 { margin: 20px 0 8px; font-size: 15px; font-weight: 700; letter-spacing: 0; }
+    p { margin: 10px 0; }
+    ul, ol { margin: 10px 0 16px 24px; padding: 0; }
+    li { margin: 5px 0; }
+    code { font-family: Consolas, "Courier New", monospace; font-size: .93em; background: var(--soft); border: 1px solid var(--line); padding: 1px 4px; border-radius: 0; }
+    pre { margin: 14px 0; padding: 14px 16px; overflow: auto; background: var(--soft); border: 1px solid var(--line); }
+    pre code { display: block; padding: 0; border: 0; background: transparent; font-size: 13px; line-height: 1.55; }
+    .table-wrap { width: 100%; overflow-x: auto; margin: 14px 0 20px; border: 1px solid var(--line); }
+    table { width: 100%; min-width: 760px; border-collapse: collapse; background: var(--bg); }
+    th, td { padding: 9px 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; white-space: nowrap; }
+    th:last-child, td:last-child { border-right: 0; }
+    tr:last-child td { border-bottom: 0; }
+    th { background: var(--soft); color: var(--strong); font-weight: 700; }
+    @media (max-width: 760px) { .page { padding: 28px 16px 48px; } h1 { font-size: 24px; } .meta { grid-template-columns: 1fr; } table { min-width: 680px; } }
+    @media print { body { font-size: 12px; } .page { max-width: none; padding: 0; } .table-wrap { overflow: visible; break-inside: avoid; } h2, h3 { break-after: avoid; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <p class="eyebrow">Engineering report / TPC-C / BenchmarkSQL</p>
+      <h1>PG12 与 YMatrix Heap TPC-C 对比测试报告</h1>
+      <section class="meta" aria-label="report metadata">
+        <div><span>Host</span><strong>172.16.100.143:/root/automan</strong></div>
+        <div><span>Job ID</span><strong>20260628-224417-tpcc</strong></div>
+        <div><span>Matrix</span><strong>100 warehouses, 100/500/1000 terminals</strong></div>
+        <div><span>Style</span><strong>black and white</strong></div>
+      </section>
+    </header>
+    <h1>PG12 与 YMatrix Heap TPC-C 对比测试报告</h1>
+    <h2>1. 摘要</h2>
+    <p>本报告基于 <code>172.16.100.143:/root/automan</code> 上的 TPC-C 自动化测试结果，对 PostgreSQL 12 heap 单节点目标（下文简称 PG12）与 YMatrix heap master-only 目标（下文简称 YMatrix Heap）进行性能和资源占用对比分析。</p>
+    <p>本次分析覆盖吞吐结果、并发扩展趋势、CPU/内存/IO 资源占用、perf 采样产物、BenchmarkSQL 标准输出和错误日志。报告重点不只呈现最终 tpmC 数字，也关注测试过程是否稳定、日志是否干净，以及资源消耗与吞吐之间是否匹配。</p>
+    <h2>2. 数据来源与测试范围</h2>
+    <h3>2.1 数据来源</h3>
+    <ul>
+    <li>- 执行机：<code>172.16.100.143</code></li>
+    <li>- 工作目录：<code>/root/automan</code></li>
+    <li>- Job ID：<code>20260628-224417-tpcc</code></li>
+    <li>- 结果查看命令：<code>./automan list -t tpcc</code></li>
+    <li>- 资源采集目录：<code>/root/automan/runs/&lt;run_id&gt;/collectors/runBenchmark.sh/database/</code></li>
+    <li>- BenchmarkSQL 日志目录：<code>/root/automan/runs/&lt;run_id&gt;/logs/</code></li>
+    </ul>
+    <h3>2.2 测试对象</h3>
+    <div class="table-wrap"><table>
+    <thead><tr><th>对象</th><th>Automan Target</th><th>数据库地址</th><th>端口</th><th>数据库</th><th>DDL Profile</th></tr></thead><tbody>
+    <tr><td>PostgreSQL 12 heap 单节点</td><td><code>pg</code></td><td><code>192.168.100.30</code></td><td>5232</td><td><code>tpcc</code></td><td><code>postgresql_heap_single_node</code></td></tr>
+    <tr><td>YMatrix heap master-only</td><td><code>ymatrix_heap</code></td><td><code>192.168.100.29</code></td><td>5432</td><td><code>tpcc</code></td><td><code>ymatrix_heap_master_only</code></td></tr>
+    </tbody></table></div>
+    <h3>2.3 测试矩阵</h3>
+    <div class="table-wrap"><table>
+    <thead><tr><th>维度</th><th>值</th></tr></thead><tbody>
+    <tr><td>Benchmark</td><td>TPC-C / BenchmarkSQL</td></tr>
+    <tr><td>Warehouses</td><td>100</td></tr>
+    <tr><td>Terminals</td><td>100, 500, 1000</td></tr>
+    <tr><td>Run Mins</td><td>15</td></tr>
+    <tr><td>系统采样间隔</td><td>1 秒</td></tr>
+    <tr><td>系统采样工具</td><td><code>vmstat</code>, <code>iostat -x</code>, <code>mpstat -P ALL</code>, <code>pidstat -durh</code></td></tr>
+    <tr><td>perf 采样</td><td>runBenchmark 阶段 3 段采样，每段 60 秒，99 Hz</td></tr>
+    </tbody></table></div>
+    <h3>2.4 实际生效参数</h3>
+    <p>本报告中的参数以测试后登录数据库执行 <code>pg_settings</code> 查询得到的实际生效值为准，而不是以 Automan 计划文件中的推荐值为准。查询时间为 2026-06-29，查询来源为 <code>172.16.100.143</code> 通过 <code>psql</code> 连接两侧数据库。</p>
+    <div class="table-wrap"><table>
+    <thead><tr><th>参数</th><th>PG12 实际值</th><th>PG12 来源</th><th>YMatrix Heap 实际值</th><th>YMatrix 来源</th></tr></thead><tbody>
+    <tr><td><code>server_version</code></td><td><code>12.12</code></td><td>-</td><td><code>12.12</code></td><td>-</td></tr>
+    <tr><td><code>max_connections</code></td><td><code>1050</code></td><td>configuration file</td><td><code>1050</code></td><td>configuration file</td></tr>
+    <tr><td><code>shared_buffers</code></td><td><code>62GB</code></td><td>configuration file</td><td><code>64GB</code></td><td>configuration file</td></tr>
+    <tr><td><code>effective_cache_size</code></td><td><code>175GB</code></td><td>configuration file</td><td><code>128GB</code></td><td>configuration file</td></tr>
+    <tr><td><code>work_mem</code></td><td><code>61MB</code></td><td>configuration file</td><td><code>4MB</code></td><td>configuration file</td></tr>
+    <tr><td><code>maintenance_work_mem</code></td><td><code>12GB</code></td><td>configuration file</td><td><code>2GB</code></td><td>configuration file</td></tr>
+    <tr><td><code>max_wal_size</code></td><td><code>64GB</code></td><td>configuration file</td><td><code>64GB</code></td><td>configuration file</td></tr>
+    <tr><td><code>min_wal_size</code></td><td><code>8GB</code></td><td>configuration file</td><td><code>8GB</code></td><td>configuration file</td></tr>
+    <tr><td><code>checkpoint_timeout</code></td><td><code>30min</code></td><td>configuration file</td><td>未返回</td><td>-</td></tr>
+    <tr><td><code>checkpoint_completion_target</code></td><td><code>0.9</code></td><td>configuration file</td><td><code>0.9</code></td><td>configuration file</td></tr>
+    <tr><td><code>vacuum_cost_limit</code></td><td><code>10000</code></td><td>configuration file</td><td><code>10000</code></td><td>configuration file</td></tr>
+    </tbody></table></div>
+    <p>两侧参数并不完全相同。PG12 的 <code>effective_cache_size</code>、<code>work_mem</code>、<code>maintenance_work_mem</code> 明显高于 YMatrix Heap；YMatrix Heap 的 <code>shared_buffers</code> 略高于 PG12。尤其是 <code>work_mem</code> 差异较大，PG12 为 61MB，YMatrix Heap 为 4MB。因此，本轮结果应解释为“当前实际部署参数下的对比”，不应表述为严格等参数对比。</p>
+    <h2>3. 测试结果汇总</h2>
+    <h3>3.1 BenchmarkSQL 吞吐结果</h3>
+    <div class="table-wrap"><table>
+    <thead><tr><th>Terminals</th><th>PG12 tpmC</th><th>YMatrix Heap tpmC</th><th>PG12 相对 YMatrix</th><th>PG12 tpmTOTAL</th><th>YMatrix Heap tpmTOTAL</th><th>结论</th></tr></thead><tbody>
+    <tr><td>100</td><td>104,138.55</td><td>102,325.19</td><td>1.02x</td><td>235,598.78</td><td>231,604.27</td><td>两者接近，PG12 小幅领先</td></tr>
+    <tr><td>500</td><td>104,498.54</td><td>103,377.64</td><td>1.01x</td><td>236,238.47</td><td>234,022.08</td><td>两者接近，PG12 小幅领先</td></tr>
+    <tr><td>1000</td><td>137,573.89</td><td>43,284.76</td><td>3.18x</td><td>311,237.68</td><td>98,033.39</td><td>PG12 高于对比对象，YMatrix Heap 吞吐明显下降</td></tr>
+    </tbody></table></div>
+    <p>从最终 tpmC 看，100 和 500 terminals 下两者结果非常接近，PG12 分别领先约 1.77% 和 1.08%。到 1000 terminals 时，PG12 的 tpmC 上升到 137,573.89，而 YMatrix Heap 下降到 43,284.76，PG12 约为 YMatrix Heap 的 3.18 倍。</p>
+    <h3>3.2 并发扩展趋势</h3>
+    <div class="table-wrap"><table>
+    <thead><tr><th>对象</th><th>100 -&gt; 500 terminals</th><th>500 -&gt; 1000 terminals</th><th>现象</th></tr></thead><tbody>
+    <tr><td>PG12</td><td>tpmC +0.35%</td><td>tpmC +31.65%</td><td>高并发下吞吐继续提升</td></tr>
+    <tr><td>YMatrix Heap</td><td>tpmC +1.03%</td><td>tpmC -58.13%</td><td>1000 并发出现明显退化</td></tr>
+    </tbody></table></div>
+    <p>PG12 在 100 和 500 terminals 下基本处于同一吞吐平台，到 1000 terminals 时吞吐继续提升，说明该负载下 PG12 尚能从更高客户端并发中获得收益。YMatrix Heap 在 100 和 500 terminals 下同样接近平台值，但 1000 terminals 时吞吐下降超过一半，说明系统进入了非线性退化区间。</p>
+    <h2>4. 资源占用对比</h2>
+    <p>以下资源数据均来自 <code>runBenchmark.sh</code> 阶段。CPU 使用率采用 <code>mpstat all</code> 统计，Run Queue、内存和部分系统指标来自 <code>vmstat</code>，IO 指标来自 <code>iostat -x</code> 中物理块设备统计。</p>
+    <h3>4.1 CPU 与调度压力</h3>
+    <div class="table-wrap"><table>
+    <thead><tr><th>Terminals</th><th>对象</th><th>CPU 平均</th><th>CPU P95</th><th>CPU 最大</th><th>Run Queue 平均</th><th>Run Queue P95</th><th>Run Queue 最大</th></tr></thead><tbody>
+    <tr><td>100</td><td>PG12</td><td>30.43%</td><td>39.46%</td><td>83.17%</td><td>18.59</td><td>27.75</td><td>106</td></tr>
+    <tr><td>100</td><td>YMatrix Heap</td><td>41.06%</td><td>74.26%</td><td>93.89%</td><td>25.45</td><td>42.65</td><td>100</td></tr>
+    <tr><td>500</td><td>PG12</td><td>35.34%</td><td>53.95%</td><td>100.00%</td><td>23.17</td><td>41.00</td><td>472</td></tr>
+    <tr><td>500</td><td>YMatrix Heap</td><td>54.10%</td><td>92.27%</td><td>99.92%</td><td>43.81</td><td>141.20</td><td>565</td></tr>
+    <tr><td>1000</td><td>PG12</td><td>53.19%</td><td>77.49%</td><td>100.00%</td><td>44.74</td><td>130.40</td><td>883</td></tr>
+    <tr><td>1000</td><td>YMatrix Heap</td><td>90.01%</td><td>99.26%</td><td>99.69%</td><td>297.08</td><td>810.00</td><td>992</td></tr>
+    </tbody></table></div>
+    <p>CPU 维度可以看到三个明显特征：</p>
+    <ol>
+    <li>1. 在 100 terminals 下，YMatrix Heap 的 CPU 平均使用率比 PG12 高约 10.6 个百分点，但 tpmC 略低。</li>
+    <li>2. 在 500 terminals 下，YMatrix Heap 的 CPU P95 已达到 92.27%，Run Queue P95 达到 141.20，说明调度排队压力已经明显高于 PG12。</li>
+    <li>3. 在 1000 terminals 下，YMatrix Heap CPU 平均值达到 90.01%，Run Queue 平均值达到 297.08，P95 达到 810.00，系统已处于严重 CPU/调度拥塞状态；PG12 虽然 Run Queue 也升高，但 CPU 平均值仍为 53.19%，吞吐没有塌陷。</li>
+    </ol>
+    <p>从单位吞吐 CPU 成本看，YMatrix Heap 在 1000 terminals 下的 CPU 使用率与 tpmC 明显失衡。按每 1 万 tpmC 消耗的 CPU 百分点粗略估算，PG12 约为 3.87，YMatrix Heap 约为 20.80，说明 YMatrix Heap 在高并发下花费了更多 CPU，但有效事务吞吐大幅下降。</p>
+    <h3>4.2 内存与 Swap</h3>
+    <div class="table-wrap"><table>
+    <thead><tr><th>Terminals</th><th>对象</th><th>可用内存最低值</th><th>Free 最低值</th><th>Swap 最大值</th></tr></thead><tbody>
+    <tr><td>100</td><td>PG12</td><td>237.00 GB</td><td>28.90 GB</td><td>0</td></tr>
+    <tr><td>100</td><td>YMatrix Heap</td><td>218.77 GB</td><td>103.82 GB</td><td>0</td></tr>
+    <tr><td>500</td><td>PG12</td><td>222.87 GB</td><td>29.08 GB</td><td>0</td></tr>
+    <tr><td>500</td><td>YMatrix Heap</td><td>190.49 GB</td><td>84.72 GB</td><td>0</td></tr>
+    <tr><td>1000</td><td>PG12</td><td>203.88 GB</td><td>58.48 GB</td><td>0</td></tr>
+    <tr><td>1000</td><td>YMatrix Heap</td><td>168.69 GB</td><td>74.66 GB</td><td>0</td></tr>
+    </tbody></table></div>
+    <p>两组测试均未发生 Swap，内存不是本次吞吐差异的直接瓶颈。YMatrix Heap 随并发提升可用内存下降更明显，但仍保留较大余量。1000 terminals 下的主要压力来自 CPU 与调度排队，而不是内存耗尽。</p>
+    <h3>4.3 IO 写入与磁盘利用率</h3>
+    <div class="table-wrap"><table>
+    <thead><tr><th>Terminals</th><th>对象</th><th>读 MB/s 平均</th><th>写 MB/s 平均</th><th>写 MB/s P95</th><th>写 MB/s 最大</th><th>磁盘 util 平均</th><th>磁盘 util P95</th><th>写等待 P95</th></tr></thead><tbody>
+    <tr><td>100</td><td>PG12</td><td>0.01</td><td>54.24</td><td>86.28</td><td>144.08</td><td>95.19%</td><td>98.00%</td><td>0.06 ms</td></tr>
+    <tr><td>100</td><td>YMatrix Heap</td><td>0.01</td><td>133.47</td><td>206.50</td><td>1045.47</td><td>95.42%</td><td>98.20%</td><td>0.45 ms</td></tr>
+    <tr><td>500</td><td>PG12</td><td>0.02</td><td>75.69</td><td>191.01</td><td>568.30</td><td>91.85%</td><td>96.90%</td><td>0.12 ms</td></tr>
+    <tr><td>500</td><td>YMatrix Heap</td><td>0.03</td><td>125.02</td><td>182.71</td><td>249.15</td><td>87.76%</td><td>96.70%</td><td>0.41 ms</td></tr>
+    <tr><td>1000</td><td>PG12</td><td>0.00</td><td>69.76</td><td>129.40</td><td>539.88</td><td>87.07%</td><td>96.37%</td><td>0.20 ms</td></tr>
+    <tr><td>1000</td><td>YMatrix Heap</td><td>0.06</td><td>29.49</td><td>60.05</td><td>406.67</td><td>26.82%</td><td>48.21%</td><td>0.49 ms</td></tr>
+    </tbody></table></div>
+    <p>IO 指标显示，100 和 500 terminals 下 YMatrix Heap 的写入量明显高于 PG12，但吞吐并未超过 PG12，说明其单位有效事务的写入成本更高。1000 terminals 下 YMatrix Heap 写入量反而下降，磁盘 util 平均值也降到 26.82%，这与吞吐明显下降和 CPU/调度拥塞同时出现，说明此时瓶颈已经不在磁盘写满，而是大量时间消耗在 CPU、调度、异常处理或内部竞争路径上。</p>
+    <p>PG12 三组测试中磁盘 util 都较高，但写等待 P95 很低，且吞吐随并发提高没有退化，说明磁盘忙碌并没有演化成主要阻塞点。</p>
+    <h2>5. 错误日志与结果可信度分析</h2>
+    <h3>5.1 错误日志统计</h3>
+    <div class="table-wrap"><table>
+    <thead><tr><th>Terminals</th><th>PG12 stderr 行数</th><th>PG12 错误匹配</th><th>YMatrix Heap stderr 行数</th><th>YMatrix Heap 错误匹配</th><th>YMatrix Heap 重复键错误出现次数</th></tr></thead><tbody>
+    <tr><td>100</td><td>0</td><td>0</td><td>1,046,416</td><td>149,488</td><td>74,744</td></tr>
+    <tr><td>500</td><td>0</td><td>0</td><td>3,244,304</td><td>463,472</td><td>231,736</td></tr>
+    <tr><td>1000</td><td>0</td><td>0</td><td>1,864,686</td><td>266,492</td><td>132,488</td></tr>
+    </tbody></table></div>
+    <p>PG12 三组测试的 <code>runBenchmark.sh.stderr.log</code> 均为空。YMatrix Heap 三组测试虽然最终状态为 success，并且 BenchmarkSQL 输出了 Measured tpmC，但 stderr 中存在大量异常堆栈，主要错误为：</p>
+    <pre><code>org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint &quot;bmsql_oorder_pkey&quot;</code></pre>
+    <p>这些错误意味着 YMatrix Heap 测试过程中存在大量订单主键冲突。由于 TPC-C 的 New Order 事务是 tpmC 的核心指标，重复键错误会直接影响测试语义和结果可信度。当前 Automan 将 runBenchmark 阶段定义为“进程退出 0 且最终 Measured tpmC 存在则保留结果”，因此这些 run 被列为 success；但从正式测试报告角度，应将 YMatrix Heap 的结果标记为“有大量异常，需复核后再作为有效横向对比依据”。</p>
+    <h3>5.2 对结果解释的影响</h3>
+    <p>100 和 500 terminals 下，PG12 与 YMatrix Heap 的 tpmC 接近，但 YMatrix Heap 同时伴随大量重复键异常。因此不能简单解读为“两者性能相当”。按工程口径判断：在当前测试条件和当前日志质量下，PG12 给出了无 stderr 错误输出、可复核的结果；YMatrix Heap 虽然最终 tpmC 接近 PG12，但测试过程存在大量事务异常，结果需要重新验证。</p>
+    <p>1000 terminals 下，YMatrix Heap 的吞吐明显下降，同时 CPU 与 Run Queue 激增，并继续存在大量重复键异常。该结果更像是系统在异常和高并发压力下进入退化状态，而不是一个稳定的高并发 TPC-C 性能点。</p>
+    <h2>6. perf 采样观察</h2>
+    <h3>6.1 perf 产物状态</h3>
+    <div class="table-wrap"><table>
+    <thead><tr><th>Terminals</th><th>对象</th><th>perf data 文件</th><th>perf data 大小</th><th>report 文件</th><th>备注</th></tr></thead><tbody>
+    <tr><td>100</td><td>PG12</td><td>4</td><td>197.14 MB</td><td>3</td><td>采样完整</td></tr>
+    <tr><td>500</td><td>PG12</td><td>4</td><td>245.41 MB</td><td>3</td><td>采样完整</td></tr>
+    <tr><td>1000</td><td>PG12</td><td>4</td><td>331.57 MB</td><td>3</td><td>采样完整</td></tr>
+    <tr><td>100</td><td>YMatrix Heap</td><td>4</td><td>243.17 MB</td><td>3</td><td>采样完整</td></tr>
+    <tr><td>500</td><td>YMatrix Heap</td><td>4</td><td>375.87 MB</td><td>3</td><td>采样完整</td></tr>
+    <tr><td>1000</td><td>YMatrix Heap</td><td>0</td><td>0 MB</td><td>3</td><td><code>perf.data</code> 被跳过，仅保留 report</td></tr>
+    </tbody></table></div>
+    <p>YMatrix Heap 1000 terminals 的 perf data 被标记为 skipped，仅保留了 perf report 文本。这不会影响对 CPU/IO/日志的整体判断，但会限制后续做更深入火焰图或 perf script 级别分析。</p>
+    <h3>6.2 perf 热点方向</h3>
+    <p>PG12 的 perf report 顶层热点主要落在 PostgreSQL 的服务端执行路径，例如 <code>PostmasterMain</code>、<code>ServerLoop</code>、<code>PostgresMain</code>、<code>PortalRun</code>、<code>ExecutorRun</code> 等路径，符合数据库执行 SQL 事务时的典型表现。</p>
+    <p>YMatrix Heap 在 100 和 500 terminals 下同样可见 PostgreSQL/YMatrix 服务端主循环和执行路径。到 1000 terminals 时，perf report 顶层出现大量 kernel syscall/write 相关路径，例如 <code>entry_SYSCALL_64_after_hwframe</code>、<code>do_syscall_64</code>、<code>vfs_write</code>、<code>ksys_write</code>、<code>new_sync_write</code>。结合 stderr 中大量异常输出和 CPU/Run Queue 升高，可以判断 1000 terminals 下 YMatrix Heap 的资源消耗已经明显偏离正常事务执行路径，异常处理和写日志/写输出路径可能放大了系统压力。</p>
+    <h2>7. 分项对比结论</h2>
+    <h3>7.1 吞吐</h3>
+    <p>PG12 在三组并发下均高于 YMatrix Heap。100 和 500 terminals 下领先幅度小，但结果无 stderr 错误输出；1000 terminals 下 PG12 高于对比对象，且没有错误日志。YMatrix Heap 在 1000 terminals 下 tpmC 下降到 43,284.76，说明当前配置和当前测试形态下无法稳定承载该并发压力。</p>
+    <h3>7.2 资源效率</h3>
+    <p>YMatrix Heap 在 100 和 500 terminals 下使用了更高 CPU 和更多写 IO，但没有获得更高 tpmC。1000 terminals 下 CPU 平均值达到 90.01%，但吞吐只有 PG12 的约 31.46%，资源效率明显下降。</p>
+    <p>PG12 的资源曲线更平滑：并发提升时 CPU 和 Run Queue 上升，但吞吐没有下降；磁盘 util 虽高，但写等待很低，没有表现出明显 IO 等待瓶颈。</p>
+    <h3>7.3 稳定性和有效性</h3>
+    <p>PG12 三组测试没有 stderr 输出，结果可直接作为本轮有效数据。YMatrix Heap 三组测试全部存在大量重复键异常，尤其 500 terminals 下 stderr 超过 324 万行，重复键错误出现超过 23 万次。即使 Automan 列为 success，也不建议将这些结果直接作为最终性能结论，应先定位重复键问题并重跑。</p>
+    <h2>8. 风险与限制</h2>
+    <ol>
+    <li>1. YMatrix Heap 的重复键异常会破坏 TPC-C 测试语义，当前 YMatrix Heap 结果应标记为“异常条件下的观测值”。</li>
+    <li>2. 两侧数据库实际生效参数不完全一致，尤其 <code>work_mem</code>、<code>effective_cache_size</code>、<code>maintenance_work_mem</code> 差异较大；本报告反映当前实际部署参数下的观测结果，不构成严格等参数对比。</li>
+    <li>3. 本报告资源分析聚焦 <code>runBenchmark.sh</code> 阶段，不覆盖建表和装载阶段的完整资源消耗。</li>
+    <li>4. IO 统计来自数据库主机物理块设备层，未进一步拆分 WAL、数据文件、日志输出等具体写入来源。</li>
+    <li>5. YMatrix Heap 1000 terminals 的 perf data 未保留，后续深入分析需要重新采样。</li>
+    <li>6. 本次对比是单次结果对比，没有包含多轮重复测试的方差和置信区间。</li>
+    </ol>
+    <h2>9. 建议</h2>
+    <ol>
+    <li>1. 优先排查 YMatrix Heap 的 <code>bmsql_oorder_pkey</code> 重复键问题，确认是 BenchmarkSQL 事务逻辑、DDL/profile、sequence 初始化、并发事务隔离，还是 YMatrix master-only 执行路径导致。</li>
+    <li>2. 在修复重复键异常前，不建议将 YMatrix Heap 当前 tpmC 与 PG12 直接作为正式性能结论对外发布。</li>
+    <li>3. 修复后按相同矩阵重跑 100、500、1000 terminals，并要求 <code>runBenchmark.sh.stderr.log</code> 无 ERROR/Exception 后再进入正式横向对比。</li>
+    <li>4. 对 1000 terminals 单独增加一次 YMatrix Heap perf 完整采样，保留 <code>perf.data</code>、<code>perf script</code> 和 <code>perf report</code>，用于确认 CPU 消耗是否仍集中在 syscall/write 或异常相关路径。</li>
+    <li>5. 若后续目标是评估稳定上限，建议增加 600、700、800、900 terminals 梯度，定位 YMatrix Heap 从平台期到塌陷区间的拐点。</li>
+    </ol>
+    <h2>10. 结论</h2>
+    <p>在本轮 <code>20260628-224417-tpcc</code> 测试中，基于两侧数据库实际生效参数，PG12 表现为结果无 stderr 错误输出、资源曲线较稳定、并发提升后仍能获得更高吞吐；YMatrix Heap 在 100 和 500 terminals 下最终 tpmC 与 PG12 接近，但资源消耗更高，并且存在大量重复键异常。到 1000 terminals 时，YMatrix Heap 出现吞吐明显下降、CPU 接近接近满载、Run Queue 大幅积压，同时继续伴随大量异常日志。</p>
+    <p>因此，本轮可确认的结论为：在当前实际部署参数与当前测试执行结果下，PG12 整体优于 YMatrix Heap，尤其在 1000 terminals 高并发场景下差距较大。YMatrix Heap 当前结果存在大量异常，需要先解决重复键问题，并在明确参数基线后重跑，才能作为严格意义上的有效 TPC-C 横向对比数据。</p>
+  </main>
+</body>
+</html>

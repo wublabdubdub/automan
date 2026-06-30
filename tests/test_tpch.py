@@ -73,7 +73,7 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertEqual(task.tpch_config.backend.access_method, "mars3")
             self.assertEqual(task.tpch_config.backend.load_data_type, "mxgate")
             self.assertEqual(task.tpch_config.backend.optimizer, "off")
-            self.assertTrue(task.tpch_config.backend.preheating_data)
+            self.assertFalse(task.tpch_config.backend.preheating_data)
             self.assertFalse(task.tpch_config.backend.explain_analyze)
 
     def test_ymatrix_backend_stage_flags_and_storage_rendering(self) -> None:
@@ -84,6 +84,7 @@ class TpchBenchmarkTest(unittest.TestCase):
         self.assertEqual(stage_flags("tpch-load")["RUN_SQL"], "false")
         self.assertEqual(stage_flags("tpch-query")["RUN_LOAD"], "false")
         self.assertEqual(stage_flags("tpch-query")["RUN_SQL"], "true")
+        self.assertEqual(stage_flags("tpch-query")["RUN_SINGLE_USER_REPORT"], "false")
 
     def test_ymatrix_backend_variables_use_target_db_host(self) -> None:
         from automan_core.tpch_backend import remote_backend_dir, render_backend_variables
@@ -110,7 +111,7 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertIn('GEN_DATA_SCALE="1"', variables)
             self.assertIn('LOAD_DATA_TYPE="mxgate"', variables)
             self.assertIn('SMALL_STORAGE="USING mars3 with (compresstype=zstd, compresslevel=2, compress_threshold=1200)"', variables)
-            self.assertIn("TPCH_SESSION_GUCS=\"set statement_mem to '1GB';\"", variables)
+            self.assertIn("TPCH_SESSION_GUCS=\"set search_path to tpch; set statement_mem to '1GB';\"", variables)
             self.assertIn('PURE_SCRIPT_MODE=""', variables)
             self.assertIn('RUN_LOAD="true"', variables)
             self.assertIn('RUN_SQL="false"', variables)
@@ -201,12 +202,55 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertTrue(any("sed -i 's/\\r$//'" in command and "dists.dss" in command for command in remote.run_commands))
             self.assertTrue(any("ConnectTimeout=0 -n -f" in command and "ConnectTimeout=5" in command for command in remote.run_commands))
             self.assertTrue(any("pgrep -fc" in command and "generate_data.sh" in command for command in remote.run_commands))
-            self.assertTrue(any("./rollout.sh" in command for command in remote.run_commands))
+            self.assertTrue(any("./00_compile_tpch/rollout.sh" in command for command in remote.run_commands))
+            self.assertTrue(any("./01_gen_data/rollout.sh" in command for command in remote.run_commands))
+            self.assertTrue(any("./02_init/rollout.sh" in command for command in remote.run_commands))
+            self.assertTrue(any("./03_ddl/rollout.sh" in command for command in remote.run_commands))
+            self.assertTrue(any('--db-master-host \\"$PGHOST\\"' in command for command in remote.run_commands))
+            self.assertTrue(any('--db-password \\"$PGPASSWORD\\"' in command for command in remote.run_commands))
+            self.assertTrue(any("ssh -n -o StrictHostKeyChecking=no" in command for command in remote.run_commands))
+            self.assertTrue(any("rollout_load.log" in command and "select count(*) from tpch.$table" in command for command in remote.run_commands))
+            self.assertFalse(any(" ./rollout.sh " in command for command in remote.run_commands))
             self.assertTrue(any("seq 1 60" in command and "select 1" in command for command in remote.run_commands))
             self.assertTrue(any("mkdir -p" in command and "/generated/log" in command for command in remote.run_commands))
             self.assertTrue(any("gp_segment_configuration" in command and 'ssh -o StrictHostKeyChecking=no "$host" mkdir -p' in command for command in remote.run_commands))
-            self.assertTrue(any("GPHOME" in command and "greenplum_path.sh" in command for command in remote.run_commands))
+            self.assertTrue(any("GPHOME" in command and "/opt/ymatrix/matrixdb6/greenplum_path.sh" in command for command in remote.run_commands))
             self.assertFalse(any("bash ./tpch.sh" in command for command in remote.run_commands))
+
+    def test_ymatrix_backend_query_stage_runs_direct_sql_rollout(self) -> None:
+        from automan_core.tpch_backend import YMatrixTpchBackend
+
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _copy_tpch_runtime_files(repo, root)
+            source_dir = root / "tools/ymatrix-tpch"
+            source_dir.mkdir(parents=True)
+            (source_dir / "tpch.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+            (source_dir / "rollout.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+            inventory = root / "automan.yml"
+            data = cli._compose_inventory(root, "tpch", ["ym-mars3"])
+            data["all"]["vars"]["job_id"] = "job-tpch"
+            data["all"]["vars"]["compress_threshold"] = [1200]
+            data["all"]["vars"]["collectors"]["enabled"] = False
+            write_yaml(inventory, data)
+            task = load_task_definition(root, inventory)
+            runs = build_tpch_run_specs(root, "job-tpch", task.targets, task.tpch_config, "tpch-query")
+            remote = FakeRemoteClient()
+            backend = YMatrixTpchBackend(remote_factory=lambda target: remote)
+
+            result = backend.run(root, task.targets[0], task.tpch_config, runs[0])
+
+            self.assertEqual(result["status"], "success")
+            self.assertTrue(any("./00_compile_tpch/rollout.sh" in command for command in remote.run_commands))
+            self.assertTrue(any("./01_gen_data/generate_queries.sh" in command for command in remote.run_commands))
+            self.assertTrue(any("./05_sql/rollout.sh" in command for command in remote.run_commands))
+            self.assertTrue(any("./05_sql/rollout.sh" in command and " true false false " in command for command in remote.run_commands))
+            self.assertTrue(any('test -s "$GEN_DATA_DIR/log/rollout_sql.log"' in command for command in remote.run_commands))
+            self.assertTrue(any("NR >= 22" in command for command in remote.run_commands))
+            self.assertFalse(any("./06_single_user_reports/rollout.sh" in command for command in remote.run_commands))
+            self.assertTrue(any("set search_path to tpch; set statement_mem to" in command for command in remote.run_commands))
+            self.assertFalse(any(" ./rollout.sh " in command for command in remote.run_commands))
 
     def test_tpch_inventory_validates_and_plans_three_ddl_profiles(self) -> None:
         repo = Path(__file__).resolve().parents[1]

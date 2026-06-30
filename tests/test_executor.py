@@ -401,9 +401,13 @@ DISTRIBUTED MASTERONLY;
 
             status = load_yaml(root / "runs" / run.run_id / "status.json")
             progress = load_yaml(root / "runs/jobs/Job/job.json")
+            published = load_yaml(root / "runs" / run.run_id / "result.json")
             self.assertEqual(status["status"], "success")
             self.assertEqual(progress["success_runs"], 1)
             self.assertEqual(progress["failed_runs"], 0)
+            self.assertEqual(published["status"], "success")
+            self.assertEqual(published["measured_tpmc"], 808.13)
+            self.assertEqual(published["measured_tpmtotal"], 1805.54)
 
     def test_collectors_wrap_run_benchmark_phase(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -617,4 +621,3 @@ DISTRIBUTED MASTERONLY;
 
 if __name__ == "__main__":
     unittest.main()
-

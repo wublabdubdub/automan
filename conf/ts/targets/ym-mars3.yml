@@ -1,0 +1,28 @@
+# YMatrix MARS3 master-only target fragment for TS benchmark.
+all:
+  children:
+    ymatrix_mars3:
+      vars:
+        db_type: ymatrix
+        storage_engine: mars3
+        test_mode: master_only
+
+        db_host: 172.16.100.62
+        db_port: 5433
+        db_name: tpcc
+        db_user: zhangchen
+        db_password: "YMatrix@123"
+
+        config_user: mxadmin
+        config_password: "mxadmin"
+        config_workdir: /home/mxadmin/automan
+        gpconfig_command: gpconfig
+
+        mars3_options:
+          prefer_load_mode: single
+          rowstore_size: 64
+          compresstype: zstd
+          compresslevel: 1
+          compress_threshold: 1200
+
+        manual_parameter_commands: []

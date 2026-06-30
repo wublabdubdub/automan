@@ -290,10 +290,10 @@ class TpchBackendConfig:
     access_method: str = "mars3"
     load_data_type: str = "mxgate"
     optimizer: str = "off"
-    preheating_data: bool = True
+    preheating_data: bool = False
     explain_analyze: bool = False
     greenplum_path: str = ""
-    session_gucs: str = "set statement_mem to '1GB';"
+    session_gucs: str = "set search_path to tpch; set statement_mem to '1GB';"
 
 
 @dataclass(frozen=True)

@@ -38,27 +38,8 @@ class Mars3DDLTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         ddl = root / "benchmarks/tpcc/benchmarksql/ddl/ymatrix_mars3_master_only/sql.common/tableCreates.sql"
         text = ddl.read_text(encoding="utf-8")
-
-        self.assertLess(text.lower().find("create extension if not exists matrixts"), text.lower().find("create table"))
-        self.assertEqual(text.count("USING MARS3"), 2)
-        self.assertEqual(text.count("DISTRIBUTED MASTERONLY"), 2)
-        self.assertIn("mars3options='prefer_load_mode=single,rowstore_size=64'", text)
-        self.assertIn("compresstype=zstd", text)
-        self.assertIn("compresslevel=1", text)
-        self.assertIn("compress_threshold=1200", text)
-
-    def test_mars3_profile_keeps_mutable_tpcc_tables_on_heap(self) -> None:
-        root = Path(__file__).resolve().parents[1]
-        ddl = root / "benchmarks/tpcc/benchmarksql/ddl/ymatrix_mars3_master_only/sql.common/tableCreates.sql"
-        text = ddl.read_text(encoding="utf-8")
-
-        for table in ("bmsql_config", "bmsql_item"):
-            start = text.find(f"create table {table}")
-            end = text.find("create table", start + 1)
-            segment = text[start:] if end < 0 else text[start:end]
-            self.assertIn("USING MARS3", segment)
-
-        mutable_tables = (
+        tables = (
+            "bmsql_config",
             "bmsql_warehouse",
             "bmsql_district",
             "bmsql_customer",
@@ -66,14 +47,25 @@ class Mars3DDLTest(unittest.TestCase):
             "bmsql_new_order",
             "bmsql_oorder",
             "bmsql_order_line",
+            "bmsql_item",
             "bmsql_stock",
         )
-        for table in mutable_tables:
+
+        self.assertLess(text.lower().find("create extension if not exists matrixts"), text.lower().find("create table"))
+        self.assertEqual(text.count("USING MARS3"), len(tables))
+        self.assertEqual(text.count("DISTRIBUTED MASTERONLY"), len(tables))
+        self.assertIn("mars3options='prefer_load_mode=single,rowstore_size=64'", text)
+        self.assertIn("compresstype=zstd", text)
+        self.assertIn("compresslevel=1", text)
+        self.assertIn("compress_threshold=1200", text)
+        for table in tables:
             with self.subTest(table=table):
                 start = text.find(f"create table {table}")
+                self.assertNotEqual(start, -1)
                 end = text.find("create table", start + 1)
                 segment = text[start:] if end < 0 else text[start:end]
-                self.assertNotIn("USING MARS3", segment)
+                self.assertIn("USING MARS3", segment)
+                self.assertIn("DISTRIBUTED MASTERONLY", segment)
 
     def test_tpcc_drop_sql_is_idempotent_for_all_profiles(self) -> None:
         root = Path(__file__).resolve().parents[1]

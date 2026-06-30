@@ -98,10 +98,10 @@ def load_tpch_config(vars_: dict[str, Any]) -> TpchConfig:
             access_method=str(raw_backend.get("access_method", "mars3")),
             load_data_type=str(raw_backend.get("load_data_type", "mxgate")),
             optimizer=str(raw_backend.get("optimizer", "off")),
-            preheating_data=_bool(raw_backend.get("preheating_data", True)),
+            preheating_data=_bool(raw_backend.get("preheating_data", False)),
             explain_analyze=_bool(raw_backend.get("explain_analyze", False)),
             greenplum_path=str(raw_backend.get("greenplum_path", "")),
-            session_gucs=str(raw_backend.get("session_gucs", "set statement_mem to '1GB';")),
+            session_gucs=str(raw_backend.get("session_gucs", "set search_path to tpch; set statement_mem to '1GB';")),
         ),
     )
 

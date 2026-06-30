@@ -1,0 +1,2640 @@
+{
+  "runs": {
+    "100": {
+      "path": "runs/20260629-mars3-19230-w100-c100-rerun2-ymatrix_mars3-w100-c100",
+      "exists": true,
+      "vmstat": {
+        "r": {
+          "n": 925,
+          "avg": 80.4854054054054,
+          "p50": 88.0,
+          "p95": 108.0,
+          "max": 130.0,
+          "min": 1.0
+        },
+        "b": {
+          "n": 925,
+          "avg": 0.022702702702702703,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 1.0,
+          "min": 0.0
+        },
+        "busy": {
+          "n": 925,
+          "avg": 89.55351351351351,
+          "p50": 96.0,
+          "p95": 99.0,
+          "max": 99.0,
+          "min": 2.0
+        },
+        "us": {
+          "n": 925,
+          "avg": 74.65297297297298,
+          "p50": 80.0,
+          "p95": 89.0,
+          "max": 94.0,
+          "min": 2.0
+        },
+        "sy": {
+          "n": 925,
+          "avg": 14.915675675675676,
+          "p50": 14.0,
+          "p95": 26.0,
+          "max": 37.0,
+          "min": 0.0
+        },
+        "wa": {
+          "n": 925,
+          "avg": 0.002162162162162162,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 1.0,
+          "min": 0.0
+        },
+        "bi": {
+          "n": 925,
+          "avg": 2.290810810810811,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 392.0,
+          "min": 0.0
+        },
+        "bo": {
+          "n": 925,
+          "avg": 70898.52756756757,
+          "p50": 16872.0,
+          "p95": 344721.5999999996,
+          "max": 764388.0,
+          "min": 40.0
+        },
+        "cs": {
+          "n": 925,
+          "avg": 97059.4172972973,
+          "p50": 41461.0,
+          "p95": 406501.0,
+          "max": 440122.0,
+          "min": 0.0
+        },
+        "free_kb": {
+          "n": 925,
+          "avg": 84552841.63459459,
+          "p50": 82746264.0,
+          "p95": 93540427.19999999,
+          "max": 97752240.0,
+          "min": 76658696.0
+        }
+      },
+      "mpstat_all_busy": {
+        "n": 926,
+        "avg": 89.49651187904952,
+        "p50": 96.525,
+        "p95": 98.7075,
+        "max": 99.42,
+        "min": 2.0
+      },
+      "hottest_cpus": [
+        {
+          "cpu": 6,
+          "avg": 93.06465442764575,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 44,
+          "avg": 91.39309935205198,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 14,
+          "avg": 91.32409287257016,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 4,
+          "avg": 91.3032073434126,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 52,
+          "avg": 91.26751619870416,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 22,
+          "avg": 91.26735421166309,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 56,
+          "avg": 91.25889848812089,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 26,
+          "avg": 91.24450323974078,
+          "p95": 100.0,
+          "max": 100.0
+        }
+      ],
+      "main_io": {
+        "dev": "sdb",
+        "util": {
+          "n": 927,
+          "avg": 24.224444444444465,
+          "p50": 22.6,
+          "p95": 39.4,
+          "max": 85.8,
+          "min": 0.0
+        },
+        "await": {
+          "avg": null,
+          "p50": null,
+          "p95": null,
+          "max": null,
+          "min": null,
+          "n": 0
+        },
+        "rkb": {
+          "n": 927,
+          "avg": 4.324498381877022,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 2963.41,
+          "min": 0.0
+        },
+        "wkb": {
+          "n": 927,
+          "avg": 69995.13682847896,
+          "p50": 16328.0,
+          "p95": 349234.00000000006,
+          "max": 758348.0,
+          "min": 0.0
+        },
+        "aqu": {
+          "n": 927,
+          "avg": 0.1699568500539378,
+          "p50": 0.03,
+          "p95": 0.6770000000000005,
+          "max": 10.15,
+          "min": 0.0
+        }
+      },
+      "io_top": [
+        {
+          "dev": "sdb",
+          "util": {
+            "n": 927,
+            "avg": 24.224444444444465,
+            "p50": 22.6,
+            "p95": 39.4,
+            "max": 85.8,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 927,
+            "avg": 4.324498381877022,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 2963.41,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 927,
+            "avg": 69995.13682847896,
+            "p50": 16328.0,
+            "p95": 349234.00000000006,
+            "max": 758348.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 927,
+            "avg": 0.1699568500539378,
+            "p50": 0.03,
+            "p95": 0.6770000000000005,
+            "max": 10.15,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "dm-2",
+          "util": {
+            "n": 927,
+            "avg": 24.15122977346277,
+            "p50": 22.5,
+            "p95": 39.5,
+            "max": 85.8,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 927,
+            "avg": 4.324498381877022,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 2963.41,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 927,
+            "avg": 69995.46563106796,
+            "p50": 16328.0,
+            "p95": 350886.8000000001,
+            "max": 758348.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 927,
+            "avg": 0.1243473570658041,
+            "p50": 0.03,
+            "p95": 0.48,
+            "max": 7.47,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "dm-0",
+          "util": {
+            "n": 927,
+            "avg": 0.20667745415317965,
+            "p50": 0.1,
+            "p95": 0.4,
+            "max": 17.8,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 927,
+            "avg": 1.10680690399137,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 388.12,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 927,
+            "avg": 1255.073689320388,
+            "p50": 55.45,
+            "p95": 364.5,
+            "max": 445180.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 927,
+            "avg": 0.0027723840345199513,
+            "p50": 0.0,
+            "p95": 0.01,
+            "max": 0.32,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "sda",
+          "util": {
+            "n": 927,
+            "avg": 0.2033549083063618,
+            "p50": 0.1,
+            "p95": 0.4,
+            "max": 20.4,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 927,
+            "avg": 1.10680690399137,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 388.12,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 927,
+            "avg": 1255.0737432578203,
+            "p50": 55.45,
+            "p95": 364.5,
+            "max": 445180.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 927,
+            "avg": 0.0019525350593311763,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.57,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "dm-1",
+          "util": {
+            "n": 927,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 927,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 927,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 927,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          }
+        }
+      ],
+      "pid_top_wait": [
+        {
+          "cmd": "rcu_sched",
+          "samples": 190,
+          "avg_cpu_per_proc": 0.9982631578947371,
+          "avg_wait": 21.035315789473685,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "postgres",
+          "samples": 92923,
+          "avg_cpu_per_proc": 55.79757229103666,
+          "avg_wait": 17.495505095616824,
+          "avg_read_kbs": 0.011409016067066279,
+          "avg_write_kbs": 1274.3949303186673,
+          "avg_iodelay": 0.021028163102784027
+        },
+        {
+          "cmd": "ksoftirqd/41",
+          "samples": 2,
+          "avg_cpu_per_proc": 1.0,
+          "avg_wait": 7.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "kworker/4:3-xfs-conv/dm-2",
+          "samples": 1,
+          "avg_cpu_per_proc": 3.0,
+          "avg_wait": 5.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "kworker/62:0-xfs-conv/dm-2",
+          "samples": 1,
+          "avg_cpu_per_proc": 4.0,
+          "avg_wait": 5.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "kworker/u130:0-flush-253:0",
+          "samples": 2,
+          "avg_cpu_per_proc": 3.96,
+          "avg_wait": 4.955,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 3.5
+        },
+        {
+          "cmd": "perf",
+          "samples": 48,
+          "avg_cpu_per_proc": 16.961875000000003,
+          "avg_wait": 3.6645833333333333,
+          "avg_read_kbs": 15.666666666666666,
+          "avg_write_kbs": 23833.298125,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "kworker/56:1-xfs-conv/dm-2",
+          "samples": 2,
+          "avg_cpu_per_proc": 2.0,
+          "avg_wait": 3.5,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        }
+      ],
+      "benchmark": {
+        "total": 260068,
+        "max_elapsed_ms": 904343,
+        "all_latency": {
+          "avg": 346.3617592322008,
+          "p50": 203.0,
+          "p95": 1081.0,
+          "p99": 3025.0,
+          "max": 52686.0
+        },
+        "tx": {
+          "DELIVERY": {
+            "count": 10321,
+            "rbk": 0,
+            "err": 0,
+            "avg": 0.006879178374188548,
+            "p50": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "max": 3.0,
+            "db_p95": 0.0
+          },
+          "ORDER_STATUS": {
+            "count": 10461,
+            "rbk": 0,
+            "err": 0,
+            "avg": 152.66370327884525,
+            "p50": 139.0,
+            "p95": 286.0,
+            "p99": 367.0,
+            "max": 9840.0,
+            "db_p95": 286.0
+          },
+          "PAYMENT": {
+            "count": 108397,
+            "rbk": 0,
+            "err": 0,
+            "avg": 208.52090002490843,
+            "p50": 130.0,
+            "p95": 577.0,
+            "p99": 973.0,
+            "max": 15305.0,
+            "db_p95": 577.0
+          },
+          "STOCK_LEVEL": {
+            "count": 10271,
+            "rbk": 0,
+            "err": 0,
+            "avg": 883.441729140298,
+            "p50": 896.0,
+            "p95": 1253.0,
+            "p99": 1576.199999999997,
+            "max": 16092.0,
+            "db_p95": 1253.0
+          },
+          "NEW_ORDER": {
+            "count": 110297,
+            "rbk": 1085,
+            "err": 0,
+            "avg": 312.38281186251663,
+            "p50": 240.0,
+            "p95": 620.0,
+            "p99": 1811.0399999999936,
+            "max": 18974.0,
+            "db_p95": 620.0
+          },
+          "DELIVERY_BG": {
+            "count": 10321,
+            "rbk": 0,
+            "err": 0,
+            "avg": 2165.368375157446,
+            "p50": 1566.0,
+            "p95": 5407.0,
+            "p99": 9239.399999999987,
+            "max": 52686.0,
+            "db_p95": 5407.0
+          }
+        },
+        "minutes": [
+          {
+            "minute": 0,
+            "total": 29488,
+            "new_order": 12449
+          },
+          {
+            "minute": 1,
+            "total": 28239,
+            "new_order": 12007
+          },
+          {
+            "minute": 2,
+            "total": 16560,
+            "new_order": 7066
+          },
+          {
+            "minute": 3,
+            "total": 17844,
+            "new_order": 7547
+          },
+          {
+            "minute": 4,
+            "total": 17950,
+            "new_order": 7516
+          },
+          {
+            "minute": 5,
+            "total": 18330,
+            "new_order": 7648
+          },
+          {
+            "minute": 6,
+            "total": 11699,
+            "new_order": 4979
+          },
+          {
+            "minute": 7,
+            "total": 11769,
+            "new_order": 4994
+          },
+          {
+            "minute": 8,
+            "total": 9656,
+            "new_order": 4117
+          },
+          {
+            "minute": 9,
+            "total": 18656,
+            "new_order": 7983
+          },
+          {
+            "minute": 10,
+            "total": 18707,
+            "new_order": 7918
+          },
+          {
+            "minute": 11,
+            "total": 17021,
+            "new_order": 7311
+          },
+          {
+            "minute": 12,
+            "total": 17376,
+            "new_order": 7383
+          },
+          {
+            "minute": 13,
+            "total": 14457,
+            "new_order": 6123
+          },
+          {
+            "minute": 14,
+            "total": 12216,
+            "new_order": 5229
+          },
+          {
+            "minute": 15,
+            "total": 100,
+            "new_order": 27
+          }
+        ]
+      },
+      "perf_samples": [
+        {
+          "file": "perf-001.report.txt",
+          "top": [
+            {
+              "pct": 21.12,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0xec8348fb89485355"
+            },
+            {
+              "pct": 21.11,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0x00007faebaf22260"
+            },
+            {
+              "pct": 21.07,
+              "symbol": "0.13%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTGetRoot"
+            },
+            {
+              "pct": 20.99,
+              "symbol": "0.00%  postgres         matrixts.so               [.] mars3::DeltaTree::~DeltaTree"
+            },
+            {
+              "pct": 19.2,
+              "symbol": "0.15%  postgres         postgres                  [.] ReadBufferExtended"
+            },
+            {
+              "pct": 18.82,
+              "symbol": "2.87%  postgres         postgres                  [.] ReadBuffer_common"
+            },
+            {
+              "pct": 15.94,
+              "symbol": "6.85%  postgres         libc-2.28.so              [.] __memset_evex_unaligned_erms"
+            },
+            {
+              "pct": 14.09,
+              "symbol": "0.02%  postgres         matrixts.so               [.] mars3::btree::BtreeGetBitmap"
+            },
+            {
+              "pct": 14.02,
+              "symbol": "0.00%  postgres         postgres                  [.] tbm_add_page"
+            },
+            {
+              "pct": 13.99,
+              "symbol": "0.00%  postgres         postgres                  [.] tbm_mark_page_lossy"
+            },
+            {
+              "pct": 13.98,
+              "symbol": "0.00%  postgres         postgres                  [.] tbm_create_pagetable"
+            },
+            {
+              "pct": 13.73,
+              "symbol": "1.44%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTSearch"
+            }
+          ]
+        },
+        {
+          "file": "perf-002.report.txt",
+          "top": [
+            {
+              "pct": 32.64,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0xec8348fb89485355"
+            },
+            {
+              "pct": 32.63,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0x00007faebaf22260"
+            },
+            {
+              "pct": 32.61,
+              "symbol": "0.10%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTGetRoot"
+            },
+            {
+              "pct": 32.55,
+              "symbol": "0.00%  postgres         matrixts.so               [.] mars3::DeltaTree::~DeltaTree"
+            },
+            {
+              "pct": 26.05,
+              "symbol": "0.13%  postgres         postgres                  [.] ReadBufferExtended"
+            },
+            {
+              "pct": 25.69,
+              "symbol": "4.13%  postgres         postgres                  [.] ReadBuffer_common"
+            },
+            {
+              "pct": 16.96,
+              "symbol": "1.76%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTSearch"
+            },
+            {
+              "pct": 15.34,
+              "symbol": "14.99%  postgres         postgres                  [.] PinBuffer"
+            },
+            {
+              "pct": 12.55,
+              "symbol": "12.42%  postgres         postgres                  [.] LWLockAcquire"
+            },
+            {
+              "pct": 10.15,
+              "symbol": "4.44%  postgres         libc-2.28.so              [.] __memset_evex_unaligned_erms"
+            },
+            {
+              "pct": 10.04,
+              "symbol": "9.83%  postgres         postgres                  [.] UnpinBuffer.constprop.0"
+            },
+            {
+              "pct": 8.99,
+              "symbol": "0.01%  postgres         matrixts.so               [.] mars3::btree::BtreeGetBitmap"
+            }
+          ]
+        },
+        {
+          "file": "perf-003.report.txt",
+          "top": [
+            {
+              "pct": 28.79,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0x00007faebaf22260"
+            },
+            {
+              "pct": 28.78,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0xec8348fb89485355"
+            },
+            {
+              "pct": 28.74,
+              "symbol": "0.15%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTGetRoot"
+            },
+            {
+              "pct": 28.66,
+              "symbol": "0.00%  postgres         matrixts.so               [.] mars3::DeltaTree::~DeltaTree"
+            },
+            {
+              "pct": 20.27,
+              "symbol": "0.15%  postgres         postgres                  [.] ReadBufferExtended"
+            },
+            {
+              "pct": 19.87,
+              "symbol": "3.10%  postgres         postgres                  [.] ReadBuffer_common"
+            },
+            {
+              "pct": 15.98,
+              "symbol": "6.87%  postgres         libc-2.28.so              [.] __memset_evex_unaligned_erms"
+            },
+            {
+              "pct": 14.3,
+              "symbol": "0.02%  postgres         matrixts.so               [.] mars3::btree::BtreeGetBitmap"
+            },
+            {
+              "pct": 14.23,
+              "symbol": "0.00%  postgres         postgres                  [.] tbm_add_page"
+            },
+            {
+              "pct": 14.22,
+              "symbol": "0.01%  postgres         postgres                  [.] tbm_mark_page_lossy"
+            },
+            {
+              "pct": 14.2,
+              "symbol": "0.00%  postgres         postgres                  [.] tbm_create_pagetable"
+            },
+            {
+              "pct": 11.92,
+              "symbol": "0.07%  postgres         [kernel.kallsyms]         [k] page_fault"
+            }
+          ]
+        }
+      ],
+      "perf_symbol_counts": {
+        "LWLockAcquire": 54,
+        "PinBuffer": 29,
+        "UnpinBuffer": 19,
+        "ReadBuffer_common": 41,
+        "ReadBufferExtended": 41,
+        "_BTGetRoot": 32,
+        "_BTSearch": 20,
+        "BtreeGetBitmap": 17,
+        "DeltaTree::~DeltaTree": 26,
+        "__memset_evex_unaligned_erms": 30,
+        "mxstat_ExecutorRun": 7
+      },
+      "errors": {
+        "scanned_files": 40,
+        "matched_files": [
+          {
+            "path": "runs/20260629-mars3-19230-w100-c100-rerun2-ymatrix_mars3-w100-c100/logs/runDatabaseBuild.sh.stdout.log",
+            "lines": 1057,
+            "duplicate_key": 0,
+            "oorder_pkey": 1,
+            "exception_or_error": 0
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c100-rerun2-ymatrix_mars3-w100-c100/logs/runBenchmark.sh.stdout.log",
+            "lines": 12954,
+            "duplicate_key": 4001,
+            "oorder_pkey": 4001,
+            "exception_or_error": 8002
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c100-rerun2-ymatrix_mars3-w100-c100/logs/runBenchmark.sh.stderr.log",
+            "lines": 56014,
+            "duplicate_key": 4001,
+            "oorder_pkey": 4001,
+            "exception_or_error": 4001
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c100-rerun2-ymatrix_mars3-w100-c100/collectors/runBenchmark.sh/database/perf/perf-001.report.txt",
+            "lines": 39555,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 1
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c100-rerun2-ymatrix_mars3-w100-c100/collectors/runBenchmark.sh/database/perf/perf-002.report.txt",
+            "lines": 34498,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 1
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c100-rerun2-ymatrix_mars3-w100-c100/collectors/runBenchmark.sh/database/perf/perf.report.txt",
+            "lines": 39555,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 1
+          }
+        ],
+        "matched_file_lines": 183633,
+        "duplicate_key_lines": 8002,
+        "oorder_pkey_lines": 8003,
+        "exception_or_error_lines": 12006
+      }
+    },
+    "500": {
+      "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c500",
+      "exists": true,
+      "vmstat": {
+        "r": {
+          "n": 933,
+          "avg": 204.69989281886387,
+          "p50": 216.0,
+          "p95": 372.4,
+          "max": 500.0,
+          "min": 1.0
+        },
+        "b": {
+          "n": 933,
+          "avg": 0.04180064308681672,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 2.0,
+          "min": 0.0
+        },
+        "busy": {
+          "n": 933,
+          "avg": 92.13933547695605,
+          "p50": 99.0,
+          "p95": 100.0,
+          "max": 100.0,
+          "min": 2.0
+        },
+        "us": {
+          "n": 933,
+          "avg": 86.44587352625938,
+          "p50": 94.0,
+          "p95": 97.0,
+          "max": 98.0,
+          "min": 2.0
+        },
+        "sy": {
+          "n": 933,
+          "avg": 5.704180064308682,
+          "p50": 4.0,
+          "p95": 14.0,
+          "max": 22.0,
+          "min": 0.0
+        },
+        "wa": {
+          "n": 933,
+          "avg": 0.0021436227224008574,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 1.0,
+          "min": 0.0
+        },
+        "bi": {
+          "n": 933,
+          "avg": 46.17256162915327,
+          "p50": 0.0,
+          "p95": 64.0,
+          "max": 4512.0,
+          "min": 0.0
+        },
+        "bo": {
+          "n": 933,
+          "avg": 89719.37084673098,
+          "p50": 5928.0,
+          "p95": 465997.5999999999,
+          "max": 1869732.0,
+          "min": 0.0
+        },
+        "cs": {
+          "n": 933,
+          "avg": 43433.38585209003,
+          "p50": 23736.0,
+          "p95": 136195.8,
+          "max": 413671.0,
+          "min": 0.0
+        },
+        "free_kb": {
+          "n": 933,
+          "avg": 46668735.879957125,
+          "p50": 46379080.0,
+          "p95": 61668368.8,
+          "max": 74290104.0,
+          "min": 30399312.0
+        }
+      },
+      "mpstat_all_busy": {
+        "n": 934,
+        "avg": 92.07023554603867,
+        "p50": 98.67,
+        "p95": 99.677,
+        "max": 99.98,
+        "min": 2.1099999999999994
+      },
+      "hottest_cpus": [
+        {
+          "cpu": 0,
+          "avg": 95.93400428265524,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 6,
+          "avg": 95.91354389721624,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 4,
+          "avg": 93.95935760171307,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 10,
+          "avg": 93.81723768736619,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 8,
+          "avg": 93.72791220556745,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 2,
+          "avg": 93.72032119914343,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 54,
+          "avg": 93.66362955032119,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 14,
+          "avg": 93.64918629550317,
+          "p95": 100.0,
+          "max": 100.0
+        }
+      ],
+      "main_io": {
+        "dev": "sdb",
+        "util": {
+          "n": 935,
+          "avg": 13.537133689839571,
+          "p50": 10.79,
+          "p95": 32.73,
+          "max": 99.9,
+          "min": 0.0
+        },
+        "await": {
+          "avg": null,
+          "p50": null,
+          "p95": null,
+          "max": null,
+          "min": null,
+          "n": 0
+        },
+        "rkb": {
+          "n": 935,
+          "avg": 42.44130481283423,
+          "p50": 0.0,
+          "p95": 64.0,
+          "max": 4288.0,
+          "min": 0.0
+        },
+        "wkb": {
+          "n": 935,
+          "avg": 89573.67228877009,
+          "p50": 5760.0,
+          "p95": 476599.3999999999,
+          "max": 1866560.0,
+          "min": 0.0
+        },
+        "aqu": {
+          "n": 935,
+          "avg": 0.5187165775401045,
+          "p50": 0.01,
+          "p95": 2.6729999999999996,
+          "max": 40.23,
+          "min": 0.0
+        }
+      },
+      "io_top": [
+        {
+          "dev": "sdb",
+          "util": {
+            "n": 935,
+            "avg": 13.537133689839571,
+            "p50": 10.79,
+            "p95": 32.73,
+            "max": 99.9,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 935,
+            "avg": 42.44130481283423,
+            "p50": 0.0,
+            "p95": 64.0,
+            "max": 4288.0,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 935,
+            "avg": 89573.67228877009,
+            "p50": 5760.0,
+            "p95": 476599.3999999999,
+            "max": 1866560.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 935,
+            "avg": 0.5187165775401045,
+            "p50": 0.01,
+            "p95": 2.6729999999999996,
+            "max": 40.23,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "dm-2",
+          "util": {
+            "n": 935,
+            "avg": 13.484374331550784,
+            "p50": 10.69,
+            "p95": 32.82999999999999,
+            "max": 96.2,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 935,
+            "avg": 42.44130481283423,
+            "p50": 0.0,
+            "p95": 64.0,
+            "max": 4288.0,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 935,
+            "avg": 89574.7620962567,
+            "p50": 5688.0,
+            "p95": 476599.3999999999,
+            "max": 1869632.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 935,
+            "avg": 0.3637112299465241,
+            "p50": 0.01,
+            "p95": 1.9129999999999994,
+            "max": 23.96,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "dm-0",
+          "util": {
+            "n": 935,
+            "avg": 0.1927272727272716,
+            "p50": 0.1,
+            "p95": 0.4,
+            "max": 11.8,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 935,
+            "avg": 6.856631016042781,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 3976.0,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 935,
+            "avg": 271.9551122994653,
+            "p50": 92.0,
+            "p95": 421.1279999999998,
+            "max": 12388.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 935,
+            "avg": 0.0030160427807486554,
+            "p50": 0.0,
+            "p95": 0.01,
+            "max": 0.66,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "sda",
+          "util": {
+            "n": 935,
+            "avg": 0.18354010695187062,
+            "p50": 0.1,
+            "p95": 0.4,
+            "max": 11.8,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 935,
+            "avg": 6.856641711229947,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 3976.0,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 935,
+            "avg": 271.9551229946525,
+            "p50": 92.0,
+            "p95": 421.1279999999998,
+            "max": 12388.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 935,
+            "avg": 0.0011336898395721926,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.41,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "dm-1",
+          "util": {
+            "n": 935,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 935,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 935,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 935,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          }
+        }
+      ],
+      "pid_top_wait": [
+        {
+          "cmd": "postgres",
+          "samples": 287928,
+          "avg_cpu_per_proc": 18.71067450890567,
+          "avg_wait": 43.29325900919861,
+          "avg_read_kbs": 0.16849792309188413,
+          "avg_write_kbs": 583.6794568781232,
+          "avg_iodelay": 0.007838765246867272
+        },
+        {
+          "cmd": "rcu_sched",
+          "samples": 202,
+          "avg_cpu_per_proc": 0.9990099009900991,
+          "avg_wait": 28.69207920792079,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "ksoftirqd/10",
+          "samples": 1,
+          "avg_cpu_per_proc": 1.0,
+          "avg_wait": 9.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "ksoftirqd/22",
+          "samples": 3,
+          "avg_cpu_per_proc": 1.0,
+          "avg_wait": 8.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "ksoftirqd/54",
+          "samples": 3,
+          "avg_cpu_per_proc": 1.0,
+          "avg_wait": 8.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "ksoftirqd/0",
+          "samples": 1,
+          "avg_cpu_per_proc": 1.0,
+          "avg_wait": 7.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "ksoftirqd/46",
+          "samples": 19,
+          "avg_cpu_per_proc": 0.9984210526315789,
+          "avg_wait": 6.67421052631579,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "ksoftirqd/62",
+          "samples": 9,
+          "avg_cpu_per_proc": 1.0,
+          "avg_wait": 6.666666666666667,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        }
+      ],
+      "benchmark": {
+        "total": 112398,
+        "max_elapsed_ms": 904558,
+        "all_latency": {
+          "avg": 4012.4155767896227,
+          "p50": 1816.0,
+          "p95": 15224.149999999994,
+          "p99": 28923.629999999976,
+          "max": 86537.0
+        },
+        "tx": {
+          "DELIVERY": {
+            "count": 4567,
+            "rbk": 0,
+            "err": 0,
+            "avg": 0.01992555287935187,
+            "p50": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "max": 22.0,
+            "db_p95": 0.0
+          },
+          "ORDER_STATUS": {
+            "count": 4462,
+            "rbk": 0,
+            "err": 0,
+            "avg": 422.7317346481398,
+            "p50": 241.0,
+            "p95": 982.9499999999998,
+            "p99": 1969.6600000000308,
+            "max": 27654.0,
+            "db_p95": 982.9499999999998
+          },
+          "STOCK_LEVEL": {
+            "count": 4660,
+            "rbk": 0,
+            "err": 0,
+            "avg": 1265.5465665236052,
+            "p50": 767.0,
+            "p95": 4090.300000000001,
+            "p99": 7617.859999999964,
+            "max": 45493.0,
+            "db_p95": 4090.300000000001
+          },
+          "PAYMENT": {
+            "count": 46528,
+            "rbk": 0,
+            "err": 0,
+            "avg": 5026.771320495186,
+            "p50": 2739.0,
+            "p95": 17348.65,
+            "p99": 30083.600000000064,
+            "max": 86537.0,
+            "db_p95": 17348.65
+          },
+          "NEW_ORDER": {
+            "count": 47614,
+            "rbk": 534,
+            "err": 0,
+            "avg": 3748.2675053555677,
+            "p50": 1816.0,
+            "p95": 13725.44999999999,
+            "p99": 26801.880000000063,
+            "max": 80089.0,
+            "db_p95": 13725.44999999999
+          },
+          "DELIVERY_BG": {
+            "count": 4567,
+            "rbk": 0,
+            "err": 0,
+            "avg": 6754.56404641997,
+            "p50": 2978.0,
+            "p95": 27502.89999999995,
+            "p99": 49137.0,
+            "max": 75335.0,
+            "db_p95": 27502.89999999995
+          }
+        },
+        "minutes": [
+          {
+            "minute": 0,
+            "total": 15390,
+            "new_order": 6622
+          },
+          {
+            "minute": 1,
+            "total": 11968,
+            "new_order": 5085
+          },
+          {
+            "minute": 2,
+            "total": 9337,
+            "new_order": 3899
+          },
+          {
+            "minute": 3,
+            "total": 12914,
+            "new_order": 5432
+          },
+          {
+            "minute": 4,
+            "total": 8693,
+            "new_order": 3733
+          },
+          {
+            "minute": 5,
+            "total": 6891,
+            "new_order": 2903
+          },
+          {
+            "minute": 6,
+            "total": 5795,
+            "new_order": 2464
+          },
+          {
+            "minute": 7,
+            "total": 5435,
+            "new_order": 2329
+          },
+          {
+            "minute": 8,
+            "total": 4851,
+            "new_order": 2072
+          },
+          {
+            "minute": 9,
+            "total": 4186,
+            "new_order": 1572
+          },
+          {
+            "minute": 10,
+            "total": 4313,
+            "new_order": 1990
+          },
+          {
+            "minute": 11,
+            "total": 6392,
+            "new_order": 2700
+          },
+          {
+            "minute": 12,
+            "total": 5846,
+            "new_order": 2505
+          },
+          {
+            "minute": 13,
+            "total": 5200,
+            "new_order": 2190
+          },
+          {
+            "minute": 14,
+            "total": 4687,
+            "new_order": 1936
+          },
+          {
+            "minute": 15,
+            "total": 500,
+            "new_order": 182
+          }
+        ]
+      },
+      "perf_samples": [
+        {
+          "file": "perf-001.report.txt",
+          "top": [
+            {
+              "pct": 31.44,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0x00007faebaf22260"
+            },
+            {
+              "pct": 31.44,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0xec8348fb89485355"
+            },
+            {
+              "pct": 31.41,
+              "symbol": "0.12%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTGetRoot"
+            },
+            {
+              "pct": 31.36,
+              "symbol": "0.00%  postgres         matrixts.so               [.] mars3::DeltaTree::~DeltaTree"
+            },
+            {
+              "pct": 27.49,
+              "symbol": "0.13%  postgres         postgres                  [.] ReadBufferExtended"
+            },
+            {
+              "pct": 27.12,
+              "symbol": "4.22%  postgres         postgres                  [.] ReadBuffer_common"
+            },
+            {
+              "pct": 20.68,
+              "symbol": "1.90%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTSearch"
+            },
+            {
+              "pct": 16.29,
+              "symbol": "15.93%  postgres         postgres                  [.] PinBuffer"
+            },
+            {
+              "pct": 12.77,
+              "symbol": "12.62%  postgres         postgres                  [.] LWLockAcquire"
+            },
+            {
+              "pct": 10.58,
+              "symbol": "4.54%  postgres         libc-2.28.so              [.] __memset_evex_unaligned_erms"
+            },
+            {
+              "pct": 10.57,
+              "symbol": "10.34%  postgres         postgres                  [.] UnpinBuffer.constprop.0"
+            },
+            {
+              "pct": 9.18,
+              "symbol": "0.01%  postgres         matrixts.so               [.] mars3::btree::BtreeGetBitmap"
+            }
+          ]
+        },
+        {
+          "file": "perf-002.report.txt",
+          "top": [
+            {
+              "pct": 44.33,
+              "symbol": "0.09%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTGetRoot"
+            },
+            {
+              "pct": 44.26,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0xec8348fb89485355"
+            },
+            {
+              "pct": 44.24,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0x00007faebaf22260"
+            },
+            {
+              "pct": 44.22,
+              "symbol": "0.00%  postgres         matrixts.so               [.] mars3::DeltaTree::~DeltaTree"
+            },
+            {
+              "pct": 37.7,
+              "symbol": "0.11%  postgres         postgres                  [.] ReadBufferExtended"
+            },
+            {
+              "pct": 37.37,
+              "symbol": "5.63%  postgres         postgres                  [.] ReadBuffer_common"
+            },
+            {
+              "pct": 29.25,
+              "symbol": "2.51%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTSearch"
+            },
+            {
+              "pct": 22.7,
+              "symbol": "22.40%  postgres         postgres                  [.] PinBuffer"
+            },
+            {
+              "pct": 18.13,
+              "symbol": "17.99%  postgres         postgres                  [.] LWLockAcquire"
+            },
+            {
+              "pct": 15.38,
+              "symbol": "15.16%  postgres         postgres                  [.] UnpinBuffer.constprop.0"
+            },
+            {
+              "pct": 10.38,
+              "symbol": "10.27%  postgres         postgres                  [.] LWLockRelease"
+            },
+            {
+              "pct": 5.76,
+              "symbol": "5.71%  postgres         postgres                  [.] BufferGetBlockNumber"
+            }
+          ]
+        },
+        {
+          "file": "perf-003.report.txt",
+          "top": [
+            {
+              "pct": 36.85,
+              "symbol": "0.08%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTGetRoot"
+            },
+            {
+              "pct": 36.79,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0xec8348fb89485355"
+            },
+            {
+              "pct": 36.77,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0x00007faebaf22260"
+            },
+            {
+              "pct": 36.74,
+              "symbol": "0.00%  postgres         matrixts.so               [.] mars3::DeltaTree::~DeltaTree"
+            },
+            {
+              "pct": 31.65,
+              "symbol": "0.12%  postgres         postgres                  [.] ReadBufferExtended"
+            },
+            {
+              "pct": 31.29,
+              "symbol": "4.78%  postgres         postgres                  [.] ReadBuffer_common"
+            },
+            {
+              "pct": 24.55,
+              "symbol": "2.27%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTSearch"
+            },
+            {
+              "pct": 18.88,
+              "symbol": "18.60%  postgres         postgres                  [.] PinBuffer"
+            },
+            {
+              "pct": 14.83,
+              "symbol": "14.70%  postgres         postgres                  [.] LWLockAcquire"
+            },
+            {
+              "pct": 12.82,
+              "symbol": "12.60%  postgres         postgres                  [.] UnpinBuffer.constprop.0"
+            },
+            {
+              "pct": 9.94,
+              "symbol": "0.00%  postgres         matrixmgr.so              [.] mxstat_ExecutorRun"
+            },
+            {
+              "pct": 9.94,
+              "symbol": "0.00%  postgres         postgres                  [.] standard_ExecutorRun"
+            }
+          ]
+        }
+      ],
+      "perf_symbol_counts": {
+        "LWLockAcquire": 52,
+        "PinBuffer": 30,
+        "UnpinBuffer": 11,
+        "ReadBuffer_common": 44,
+        "ReadBufferExtended": 44,
+        "_BTGetRoot": 30,
+        "_BTSearch": 21,
+        "BtreeGetBitmap": 11,
+        "DeltaTree::~DeltaTree": 24,
+        "__memset_evex_unaligned_erms": 23,
+        "mxstat_ExecutorRun": 8
+      },
+      "errors": {
+        "scanned_files": 40,
+        "matched_files": [
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c500/logs/runDatabaseBuild.sh.stdout.log",
+            "lines": 1057,
+            "duplicate_key": 0,
+            "oorder_pkey": 1,
+            "exception_or_error": 0
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c500/logs/runBenchmark.sh.stdout.log",
+            "lines": 22976,
+            "duplicate_key": 7301,
+            "oorder_pkey": 7301,
+            "exception_or_error": 14724
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c500/logs/runBenchmark.sh.stderr.log",
+            "lines": 103007,
+            "duplicate_key": 7301,
+            "oorder_pkey": 7301,
+            "exception_or_error": 7362
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c500/collectors/runBenchmark.sh/database/perf/perf-001.report.txt",
+            "lines": 32100,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 1
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c500/collectors/runBenchmark.sh/database/perf/perf-003.report.txt",
+            "lines": 24446,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 1
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c500/collectors/runBenchmark.sh/database/perf/perf.report.txt",
+            "lines": 32100,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 1
+          }
+        ],
+        "matched_file_lines": 215686,
+        "duplicate_key_lines": 14602,
+        "oorder_pkey_lines": 14603,
+        "exception_or_error_lines": 22089
+      }
+    },
+    "1000": {
+      "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000",
+      "exists": true,
+      "vmstat": {
+        "r": {
+          "n": 966,
+          "avg": 55.52070393374741,
+          "p50": 6.0,
+          "p95": 271.75,
+          "max": 578.0,
+          "min": 1.0
+        },
+        "b": {
+          "n": 966,
+          "avg": 0.020703933747412008,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 2.0,
+          "min": 0.0
+        },
+        "busy": {
+          "n": 966,
+          "avg": 34.00414078674948,
+          "p50": 9.0,
+          "p95": 100.0,
+          "max": 100.0,
+          "min": 3.0
+        },
+        "us": {
+          "n": 966,
+          "avg": 30.06625258799172,
+          "p50": 7.0,
+          "p95": 92.0,
+          "max": 95.0,
+          "min": 2.0
+        },
+        "sy": {
+          "n": 966,
+          "avg": 3.987577639751553,
+          "p50": 2.0,
+          "p95": 11.0,
+          "max": 30.0,
+          "min": 1.0
+        },
+        "wa": {
+          "n": 966,
+          "avg": 0.015527950310559006,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 1.0,
+          "min": 0.0
+        },
+        "bi": {
+          "n": 966,
+          "avg": 1.2536231884057971,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 64.0,
+          "min": 0.0
+        },
+        "bo": {
+          "n": 966,
+          "avg": 142155.87060041408,
+          "p50": 4844.0,
+          "p95": 702818.0,
+          "max": 1774892.0,
+          "min": 0.0
+        },
+        "cs": {
+          "n": 966,
+          "avg": 60095.45962732919,
+          "p50": 57473.5,
+          "p95": 126750.0,
+          "max": 252179.0,
+          "min": 0.0
+        },
+        "free_kb": {
+          "n": 966,
+          "avg": 51942235.62732919,
+          "p50": 52241710.0,
+          "p95": 63255165.0,
+          "max": 68538672.0,
+          "min": 33610880.0
+        }
+      },
+      "mpstat_all_busy": {
+        "n": 967,
+        "avg": 34.03158221302999,
+        "p50": 9.5,
+        "p95": 99.587,
+        "max": 100.0,
+        "min": 3.0
+      },
+      "hottest_cpus": [
+        {
+          "cpu": 35,
+          "avg": 40.46532574974152,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 0,
+          "avg": 39.7827094105481,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 1,
+          "avg": 38.40218200620476,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 26,
+          "avg": 36.91695966907964,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 13,
+          "avg": 36.88505687693897,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 4,
+          "avg": 36.70377456049638,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 17,
+          "avg": 36.63209927611169,
+          "p95": 100.0,
+          "max": 100.0
+        },
+        {
+          "cpu": 3,
+          "avg": 35.86534643226473,
+          "p95": 100.0,
+          "max": 100.0
+        }
+      ],
+      "main_io": {
+        "dev": "sdb",
+        "util": {
+          "n": 969,
+          "avg": 9.512012383900942,
+          "p50": 7.4,
+          "p95": 33.480000000000004,
+          "max": 79.9,
+          "min": 0.0
+        },
+        "await": {
+          "avg": null,
+          "p50": null,
+          "p95": null,
+          "max": null,
+          "min": null,
+          "n": 0
+        },
+        "rkb": {
+          "n": 969,
+          "avg": 4.228183694530443,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 2962.37,
+          "min": 0.0
+        },
+        "wkb": {
+          "n": 969,
+          "avg": 142082.04345717235,
+          "p50": 4864.0,
+          "p95": 702404.0,
+          "max": 1760316.0,
+          "min": 0.0
+        },
+        "aqu": {
+          "n": 969,
+          "avg": 1.7635190918472616,
+          "p50": 0.01,
+          "p95": 11.250000000000004,
+          "max": 54.49,
+          "min": 0.0
+        }
+      },
+      "io_top": [
+        {
+          "dev": "sdb",
+          "util": {
+            "n": 969,
+            "avg": 9.512012383900942,
+            "p50": 7.4,
+            "p95": 33.480000000000004,
+            "max": 79.9,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 969,
+            "avg": 4.228183694530443,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 2962.37,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 969,
+            "avg": 142082.04345717235,
+            "p50": 4864.0,
+            "p95": 702404.0,
+            "max": 1760316.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 969,
+            "avg": 1.7635190918472616,
+            "p50": 0.01,
+            "p95": 11.250000000000004,
+            "max": 54.49,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "dm-2",
+          "util": {
+            "n": 969,
+            "avg": 9.480206398348829,
+            "p50": 7.3,
+            "p95": 33.480000000000004,
+            "max": 79.9,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 969,
+            "avg": 4.228173374613004,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 2962.36,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 969,
+            "avg": 142082.18960784315,
+            "p50": 4570.3,
+            "p95": 708366.4000000001,
+            "max": 1760348.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 969,
+            "avg": 1.2496388028895757,
+            "p50": 0.01,
+            "p95": 7.936000000000009,
+            "max": 40.84,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "dm-0",
+          "util": {
+            "n": 969,
+            "avg": 0.17007223942208288,
+            "p50": 0.1,
+            "p95": 0.3,
+            "max": 14.0,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 969,
+            "avg": 0.05013415892672859,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 24.0,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 969,
+            "avg": 208.95683178534574,
+            "p50": 56.0,
+            "p95": 366.7000000000001,
+            "max": 12448.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 969,
+            "avg": 0.0030546955624355015,
+            "p50": 0.0,
+            "p95": 0.01,
+            "max": 0.89,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "sda",
+          "util": {
+            "n": 969,
+            "avg": 0.16658410732713957,
+            "p50": 0.1,
+            "p95": 0.3,
+            "max": 12.1,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 969,
+            "avg": 0.05013415892672859,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 24.0,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 969,
+            "avg": 208.95683178534574,
+            "p50": 56.0,
+            "p95": 366.7000000000001,
+            "max": 12448.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 969,
+            "avg": 0.0018679050567595463,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.49,
+            "min": 0.0
+          }
+        },
+        {
+          "dev": "dm-1",
+          "util": {
+            "n": 969,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          },
+          "await": {
+            "avg": null,
+            "p50": null,
+            "p95": null,
+            "max": null,
+            "min": null,
+            "n": 0
+          },
+          "rkb": {
+            "n": 969,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          },
+          "wkb": {
+            "n": 969,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          },
+          "aqu": {
+            "n": 969,
+            "avg": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "max": 0.0,
+            "min": 0.0
+          }
+        }
+      ],
+      "pid_top_wait": [
+        {
+          "cmd": "postgres",
+          "samples": 191911,
+          "avg_cpu_per_proc": 10.426085320798967,
+          "avg_wait": 13.650047522028718,
+          "avg_read_kbs": 0.0063362704587022105,
+          "avg_write_kbs": 1389.562981538398,
+          "avg_iodelay": 0.00871237188071554
+        },
+        {
+          "cmd": "mxstate",
+          "samples": 1,
+          "avg_cpu_per_proc": 0.0,
+          "avg_wait": 13.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "kworker/61:1-events",
+          "samples": 1,
+          "avg_cpu_per_proc": 1.0,
+          "avg_wait": 10.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "ksoftirqd/47",
+          "samples": 2,
+          "avg_cpu_per_proc": 1.0,
+          "avg_wait": 8.5,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "kworker/32:3-events",
+          "samples": 1,
+          "avg_cpu_per_proc": 1.0,
+          "avg_wait": 8.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "ksoftirqd/14",
+          "samples": 11,
+          "avg_cpu_per_proc": 0.9981818181818182,
+          "avg_wait": 7.708181818181819,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "rcu_sched",
+          "samples": 241,
+          "avg_cpu_per_proc": 0.9996680497925312,
+          "avg_wait": 7.304190871369294,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        },
+        {
+          "cmd": "ksoftirqd/20",
+          "samples": 2,
+          "avg_cpu_per_proc": 1.0,
+          "avg_wait": 7.0,
+          "avg_read_kbs": 0.0,
+          "avg_write_kbs": 0.0,
+          "avg_iodelay": 0.0
+        }
+      ],
+      "benchmark": {
+        "total": 59573,
+        "max_elapsed_ms": 909426,
+        "all_latency": {
+          "avg": 15239.196330552431,
+          "p50": 3052.0,
+          "p95": 82462.4,
+          "p99": 203956.55999999988,
+          "max": 404817.0
+        },
+        "tx": {
+          "DELIVERY": {
+            "count": 2350,
+            "rbk": 0,
+            "err": 0,
+            "avg": 0.08808510638297873,
+            "p50": 0.0,
+            "p95": 0.0,
+            "p99": 1.0,
+            "max": 29.0,
+            "db_p95": 0.0
+          },
+          "STOCK_LEVEL": {
+            "count": 2453,
+            "rbk": 0,
+            "err": 0,
+            "avg": 2121.243783122707,
+            "p50": 998.0,
+            "p95": 8152.000000000004,
+            "p99": 13053.880000000006,
+            "max": 23266.0,
+            "db_p95": 8152.000000000004
+          },
+          "ORDER_STATUS": {
+            "count": 2418,
+            "rbk": 0,
+            "err": 0,
+            "avg": 594.0831265508685,
+            "p50": 341.0,
+            "p95": 1771.15,
+            "p99": 3903.939999999984,
+            "max": 21338.0,
+            "db_p95": 1771.15
+          },
+          "PAYMENT": {
+            "count": 24840,
+            "rbk": 0,
+            "err": 0,
+            "avg": 16960.81461352657,
+            "p50": 2901.0,
+            "p95": 96513.34999999998,
+            "p99": 212824.20000000007,
+            "max": 389926.0,
+            "db_p95": 96513.34999999998
+          },
+          "NEW_ORDER": {
+            "count": 25162,
+            "rbk": 256,
+            "err": 0,
+            "avg": 18047.508107463636,
+            "p50": 4263.0,
+            "p95": 97219.75,
+            "p99": 211842.99999999983,
+            "max": 404817.0,
+            "db_p95": 97219.75
+          },
+          "DELIVERY_BG": {
+            "count": 2350,
+            "rbk": 0,
+            "err": 0,
+            "avg": 10972.977872340425,
+            "p50": 8325.5,
+            "p95": 29746.30000000004,
+            "p99": 66409.40000000034,
+            "max": 149010.0,
+            "db_p95": 29746.30000000004
+          }
+        },
+        "minutes": [
+          {
+            "minute": 0,
+            "total": 13910,
+            "new_order": 5853
+          },
+          {
+            "minute": 1,
+            "total": 1861,
+            "new_order": 722
+          },
+          {
+            "minute": 2,
+            "total": 1080,
+            "new_order": 434
+          },
+          {
+            "minute": 3,
+            "total": 2483,
+            "new_order": 1041
+          },
+          {
+            "minute": 4,
+            "total": 2188,
+            "new_order": 864
+          },
+          {
+            "minute": 5,
+            "total": 3455,
+            "new_order": 1443
+          },
+          {
+            "minute": 6,
+            "total": 8085,
+            "new_order": 3589
+          },
+          {
+            "minute": 7,
+            "total": 7851,
+            "new_order": 3409
+          },
+          {
+            "minute": 8,
+            "total": 7186,
+            "new_order": 2814
+          },
+          {
+            "minute": 9,
+            "total": 1591,
+            "new_order": 707
+          },
+          {
+            "minute": 10,
+            "total": 1724,
+            "new_order": 707
+          },
+          {
+            "minute": 11,
+            "total": 1930,
+            "new_order": 810
+          },
+          {
+            "minute": 12,
+            "total": 1792,
+            "new_order": 766
+          },
+          {
+            "minute": 13,
+            "total": 1664,
+            "new_order": 723
+          },
+          {
+            "minute": 14,
+            "total": 1773,
+            "new_order": 761
+          },
+          {
+            "minute": 15,
+            "total": 1000,
+            "new_order": 519
+          }
+        ]
+      },
+      "perf_samples": [
+        {
+          "file": "perf-001.report.txt",
+          "top": [
+            {
+              "pct": 32.34,
+              "symbol": "0.00%  swapper          [kernel.kallsyms]         [k] secondary_startup_64_no_verify"
+            },
+            {
+              "pct": 32.34,
+              "symbol": "0.00%  swapper          [kernel.kallsyms]         [k] cpu_startup_entry"
+            },
+            {
+              "pct": 32.34,
+              "symbol": "0.03%  swapper          [kernel.kallsyms]         [k] do_idle"
+            },
+            {
+              "pct": 31.84,
+              "symbol": "0.00%  swapper          [kernel.kallsyms]         [k] start_secondary"
+            },
+            {
+              "pct": 31.57,
+              "symbol": "0.00%  swapper          [kernel.kallsyms]         [k] cpuidle_enter"
+            },
+            {
+              "pct": 31.57,
+              "symbol": "0.04%  swapper          [kernel.kallsyms]         [k] cpuidle_enter_state"
+            },
+            {
+              "pct": 30.31,
+              "symbol": "29.53%  swapper          [kernel.kallsyms]         [k] intel_idle"
+            },
+            {
+              "pct": 18.27,
+              "symbol": "0.00%  postgres         matrixmgr.so              [.] mxstat_ExecutorRun"
+            },
+            {
+              "pct": 18.27,
+              "symbol": "0.00%  postgres         postgres                  [.] standard_ExecutorRun"
+            },
+            {
+              "pct": 18.27,
+              "symbol": "0.00%  postgres         postgres                  [.] ExecutePlan.part.0"
+            },
+            {
+              "pct": 18.09,
+              "symbol": "0.51%  postgres         postgres                  [.] ExecProcNodeGPDB"
+            },
+            {
+              "pct": 17.38,
+              "symbol": "0.49%  postgres         postgres                  [.] ExecMotion"
+            }
+          ]
+        },
+        {
+          "file": "perf-002.report.txt",
+          "top": [
+            {
+              "pct": 38.3,
+              "symbol": "0.10%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTGetRoot"
+            },
+            {
+              "pct": 38.27,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0xec8348fb89485355"
+            },
+            {
+              "pct": 38.26,
+              "symbol": "0.00%  postgres         [unknown]                 [.] 0x00007faebaf22260"
+            },
+            {
+              "pct": 38.22,
+              "symbol": "0.00%  postgres         matrixts.so               [.] mars3::DeltaTree::~DeltaTree"
+            },
+            {
+              "pct": 33.01,
+              "symbol": "0.12%  postgres         postgres                  [.] ReadBufferExtended"
+            },
+            {
+              "pct": 32.65,
+              "symbol": "5.01%  postgres         postgres                  [.] ReadBuffer_common"
+            },
+            {
+              "pct": 25.67,
+              "symbol": "2.09%  postgres         matrixts.so               [.] mars3::btree::BtreeRun<(mars3::btree::BtreeType)0>::_BTSearch"
+            },
+            {
+              "pct": 19.99,
+              "symbol": "19.67%  postgres         postgres                  [.] PinBuffer"
+            },
+            {
+              "pct": 15.64,
+              "symbol": "15.49%  postgres         postgres                  [.] LWLockAcquire"
+            },
+            {
+              "pct": 13.5,
+              "symbol": "13.26%  postgres         postgres                  [.] UnpinBuffer.constprop.0"
+            },
+            {
+              "pct": 9.04,
+              "symbol": "8.92%  postgres         postgres                  [.] LWLockRelease"
+            },
+            {
+              "pct": 5.32,
+              "symbol": "2.43%  postgres         libc-2.28.so              [.] __memset_evex_unaligned_erms"
+            }
+          ]
+        },
+        {
+          "file": "perf-003.report.txt",
+          "top": [
+            {
+              "pct": 29.74,
+              "symbol": "0.00%  swapper          [kernel.kallsyms]         [k] secondary_startup_64_no_verify"
+            },
+            {
+              "pct": 29.74,
+              "symbol": "0.00%  swapper          [kernel.kallsyms]         [k] cpu_startup_entry"
+            },
+            {
+              "pct": 29.74,
+              "symbol": "0.03%  swapper          [kernel.kallsyms]         [k] do_idle"
+            },
+            {
+              "pct": 29.35,
+              "symbol": "0.00%  swapper          [kernel.kallsyms]         [k] start_secondary"
+            },
+            {
+              "pct": 29.07,
+              "symbol": "0.00%  swapper          [kernel.kallsyms]         [k] cpuidle_enter"
+            },
+            {
+              "pct": 29.07,
+              "symbol": "0.04%  swapper          [kernel.kallsyms]         [k] cpuidle_enter_state"
+            },
+            {
+              "pct": 27.58,
+              "symbol": "27.02%  swapper          [kernel.kallsyms]         [k] intel_idle"
+            },
+            {
+              "pct": 16.67,
+              "symbol": "0.00%  postgres         matrixmgr.so              [.] mxstat_ExecutorRun"
+            },
+            {
+              "pct": 16.67,
+              "symbol": "0.00%  postgres         postgres                  [.] standard_ExecutorRun"
+            },
+            {
+              "pct": 16.66,
+              "symbol": "0.00%  postgres         postgres                  [.] ExecutePlan.part.0"
+            },
+            {
+              "pct": 16.34,
+              "symbol": "0.34%  postgres         postgres                  [.] ExecProcNodeGPDB"
+            },
+            {
+              "pct": 15.56,
+              "symbol": "0.32%  postgres         postgres                  [.] ExecMotion"
+            }
+          ]
+        }
+      ],
+      "perf_symbol_counts": {
+        "LWLockAcquire": 44,
+        "PinBuffer": 26,
+        "UnpinBuffer": 10,
+        "ReadBuffer_common": 37,
+        "ReadBufferExtended": 38,
+        "_BTGetRoot": 29,
+        "_BTSearch": 18,
+        "BtreeGetBitmap": 11,
+        "DeltaTree::~DeltaTree": 23,
+        "__memset_evex_unaligned_erms": 23,
+        "mxstat_ExecutorRun": 23
+      },
+      "errors": {
+        "scanned_files": 38,
+        "matched_files": [
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000/logs/runDatabaseBuild.sh.stdout.log",
+            "lines": 1057,
+            "duplicate_key": 0,
+            "oorder_pkey": 1,
+            "exception_or_error": 0
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000/logs/runBenchmark.sh.stdout.log",
+            "lines": 19637,
+            "duplicate_key": 6227,
+            "oorder_pkey": 6227,
+            "exception_or_error": 12454
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000/logs/runBenchmark.sh.stderr.log",
+            "lines": 87178,
+            "duplicate_key": 6227,
+            "oorder_pkey": 6227,
+            "exception_or_error": 6227
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000/collectors/runBenchmark.sh/database/perf/perf-001.script.txt",
+            "lines": 888357,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 2
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000/collectors/runBenchmark.sh/database/perf/perf-001.report.txt",
+            "lines": 25145,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 1
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000/collectors/runBenchmark.sh/database/perf/perf-003.script.txt",
+            "lines": 907315,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 3
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000/collectors/runBenchmark.sh/database/perf/perf-003.report.txt",
+            "lines": 25788,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 1
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000/collectors/runBenchmark.sh/database/perf/perf.script.txt",
+            "lines": 888357,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 2
+          },
+          {
+            "path": "runs/20260629-mars3-19230-w100-c500-c1000-ymatrix_mars3-w100-c1000/collectors/runBenchmark.sh/database/perf/perf.report.txt",
+            "lines": 25145,
+            "duplicate_key": 0,
+            "oorder_pkey": 0,
+            "exception_or_error": 1
+          }
+        ],
+        "matched_file_lines": 2867979,
+        "duplicate_key_lines": 12454,
+        "oorder_pkey_lines": 12455,
+        "exception_or_error_lines": 18691
+      }
+    }
+  },
+  "results": {
+    "100": {
+      "tpmc": 7317.81,
+      "tpmtotal": 16569.88,
+      "start": "2026-06-29 21:23:59",
+      "end": "2026-06-29 21:39:04",
+      "terminals": 100
+    },
+    "500": {
+      "tpmc": 3158.26,
+      "tpmtotal": 7152.56,
+      "start": "2026-06-29 21:51:21",
+      "end": "2026-06-29 22:06:25",
+      "terminals": 500
+    },
+    "1000": {
+      "tpmc": 1660.07,
+      "tpmtotal": 3775.38,
+      "start": "2026-06-29 22:13:07",
+      "end": "2026-06-29 22:28:16",
+      "terminals": 1000
+    }
+  }
+}

@@ -13,6 +13,7 @@ from pathlib import Path
 from automan_core.collectors import CollectorError, CollectorManager, NullCollectorManager
 from automan_core.config import load_yaml, write_json
 from automan_core.models import CollectorConfig, RunSpec, Target
+from automan_core.result_summary import publish_run_result
 from automan_core.ssh import CommandResult
 
 
@@ -182,6 +183,7 @@ def _execute_run(
             return
 
     _set_run_status(run_dir, "success", "report")
+    publish_run_result(root, target, run)
     _mark_run_finished(job_dir, run.target_id, failed=False)
 
 

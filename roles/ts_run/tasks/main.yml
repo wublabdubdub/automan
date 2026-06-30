@@ -1,0 +1,54 @@
+---
+- name: Run TS job through automan CLI
+  ansible.builtin.command:
+    argv: "{{ [automan_python, '-m', 'automan_core', 'run', '-i', automan_config_file] + ((stage | default('') | length > 0) | ternary(['--stage', stage], [])) }}"
+  args:
+    chdir: "{{ automan_root }}"
+  register: ts_run_result
+  failed_when: false
+  tags:
+    - ts_run
+
+- name: Show TS run output
+  ansible.builtin.debug:
+    var: ts_run_result.stdout_lines
+  when:
+    - ts_run_result.rc == 0
+    - ts_run_result.stdout_lines is defined
+  tags:
+    - ts_run
+
+- name: Show formatted TS run failure
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ (ts_run_result.stdout_lines | default([]))[-80:] }}"
+  loop_control:
+    label: ""
+  when:
+    - ts_run_result.rc != 0
+    - ts_run_result.stdout_lines | default([]) | length > 0
+  tags:
+    - ts_run
+
+- name: Show formatted TS run stderr
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ ts_run_result.stderr_lines | default([]) }}"
+  loop_control:
+    label: ""
+  when:
+    - ts_run_result.rc != 0
+    - ts_run_result.stderr_lines | default([]) | length > 0
+  tags:
+    - ts_run
+
+- name: Fail after formatted TS run output
+  ansible.builtin.fail:
+    msg: >-
+      {{ (ts_run_result.stdout | default('') | regex_search('(?m)^\[FAIL\].*')) | default('TS run failed', true) }}
+      {% set hints = ts_run_result.stdout | default('') | regex_findall('(?m)^\[HINT\].*') %}
+      {% if hints | length > 0 %} | {{ hints[-3:] | join(' | ') }}{% endif %}
+      (rc={{ ts_run_result.rc }}; command: {{ automan_python }} -m automan_core run -i {{ automan_config_file }}{% if stage | default('') | length > 0 %} --stage {{ stage }}{% endif %})
+  when: ts_run_result.rc != 0
+  tags:
+    - ts_run

@@ -19,9 +19,11 @@ cd /root/automan
 ./check.yml -i automan.yml
 ./tpcc.yml -i automan.yml
 ./automan progress
-./automan list
+./automan list -t tpcc
 ./report.yml -i automan.yml
 ```
+
+Use `./automan list -t ts` for completed TS results.
 
 Run only one TPC-C stage when needed:
 
@@ -39,14 +41,14 @@ Watch the current TPC-C job from another terminal:
 ./automan progress --watch 5
 ```
 
-Delete one whole job and all referenced run/work artifacts:
+Delete one or more benchmark results by result ID:
 
 ```bash
-./automan delete <job_id>
-./automan delete <job_id> -f
+./automan delete <id>
+./automan delete <id> <id> -f
 ```
 
-`-f` skips the interactive `DELETE` confirmation. The delete command removes `runs/jobs/<job_id>/`, every `runs/<run_id>/` referenced by the job plan, and every referenced `work/tpcc/benchmarksql/<run_id>/` workspace.
+`-f` skips the interactive `DELETE` confirmation. IDs are the stable hash `ID` values printed by `./automan list -t tpcc`, `./automan list -t tpch`, or other list views; full run IDs are also accepted. The delete command removes the selected `runs/<run_id>/` and referenced work directories, updates the owning job metadata, and removes the job directory when no runs remain.
 
 Compose multiple benchmark targets into one job with comma-separated aliases:
 

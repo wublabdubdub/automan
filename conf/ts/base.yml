@@ -1,0 +1,137 @@
+# TS inventory base. Compose targets with:
+#   ./configure -t ts -c ym-mars3 -o automan.yml
+all:
+  vars:
+    benchmark: ts
+    job_id:
+
+    ts_stages: [ts-write, ts-query, point-query]
+    compress_threshold: [1200, 4096, 8192, 32768]
+
+    kafka:
+      host: 172.16.100.214
+      port: 22
+      user: root
+      password: "bigdata@yMatrix.cn"
+      kafka_bin: /opt/kafka_2.13-4.1.2/bin
+      bootstrap_server: localhost:9092
+      topic: iot_vehicle_raw_test
+      partitions: [36]
+      replication_factor: 1
+      recreate_topic: true
+
+    mxgate:
+      user: mxadmin
+      password: "mxadmin"
+      workdir: /home/mxadmin/automan
+      binary: mxgate
+      source: kafka
+      transform: plain
+      writer: stream
+      delimiter: "|"
+      format: text
+      time_format: unix-ms
+      stream_use_gzip: "no"
+      interval_ms: 50
+      bytes_limit: 67108864
+      stream_prepared: 36
+      write_buffer_size: 1048576
+      compress_pool_size: 4096
+      max_seg_conn: 128
+      seg_conn_timeout_millis: 30000
+      insert_timeout: 0
+      enable_event_trigger: false
+
+    ts_write:
+      table: iot_vehicle_raw
+      workers: [20]
+      rate_per_worker: [10000]
+      vins: [10000]
+      vin_interval: [10s]
+      duration_seconds: [300]
+      pressure_level: medium
+      pressure_profiles:
+        smoke:
+          producer_type: kafka_perf
+          target_qps: 1000
+          producers: 1
+          batch_size: 1000
+          linger_ms: 10
+          payload_bytes: 128
+          sample_records: 10000
+        low:
+          producer_type: kafka_perf
+          target_qps: 10000
+          producers: 2
+          batch_size: 5000
+          linger_ms: 10
+          payload_bytes: 128
+          sample_records: 10000
+        medium:
+          producer_type: kafka_perf
+          target_qps: 50000
+          producers: 4
+          batch_size: 10000
+          linger_ms: 5
+          payload_bytes: 128
+          sample_records: 10000
+        high:
+          producer_type: kafka_perf
+          target_qps: 200000
+          producers: 8
+          batch_size: 20000
+          linger_ms: 5
+          payload_bytes: 128
+          sample_records: 10000
+        extreme:
+          producer_type: kafka_perf
+          target_qps: 500000
+          producers: 16
+          batch_size: 50000
+          linger_ms: 1
+          payload_bytes: 128
+          sample_records: 20000
+      producer_fast_mode: true
+      producer_lead_seconds: 20
+      monitor_interval_seconds: 5
+      lag_drain_timeout_seconds: 600
+      require_zero_lag: true
+
+    ts_query:
+      dependency_mode: reuse
+      rounds: [3]
+      warmup_rounds: [1]
+      timeout_seconds: 7200
+
+    point_query:
+      dependency_mode: reuse
+      rounds: [3]
+      warmup_rounds: [1]
+      sample_size: [1000]
+      timeout_seconds: 7200
+
+    collectors:
+      enabled: true
+      system:
+        enabled: true
+        interval_seconds: 1
+        host_roles: [database]
+        tools: [vmstat, iostat, pidstat, mpstat]
+      perf:
+        enabled: false
+        phases: [ts-write, ts-query, point-query]
+        host_roles: [database]
+        frequency: 99
+        call_graph: fp
+        record_scope: system
+
+  children:
+    bench:
+      hosts:
+        bench01:
+          ansible_host: 172.16.100.143
+          ansible_port: 22
+          ansible_user: root
+          ansible_password: ""
+          ansible_connection: local
+          automan_workdir: /root/automan

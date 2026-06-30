@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, Union
 
 from automan_core.checks import check_task_readiness
+from automan_core.clean_stale_runs import clean_stale_runs
 from automan_core.config import load_yaml, write_yaml
-from automan_core.delete_results import delete_job
+from automan_core.delete_results import delete_results
 from automan_core.list_results import show_completed_results
 from automan_core.models import Target
 from automan_core.progress import show_progress
@@ -24,6 +25,7 @@ from automan_core.task_runner import (
     run_task_job,
     validate_task_definition,
 )
+from automan_core.ts import kafka_check
 from automan_core.tooling import build_benchmarksql_on_linux, prompt_remote_execution_host
 
 
@@ -53,6 +55,7 @@ CONFIG_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 CONFIG_TARGETS = ("pg", "ym-heap", "ym-mars3")
+CONFIG_TYPES = ("tpcc", "ts", "ap", "tpch")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,6 +67,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     check_parser = subparsers.add_parser("check", help="validate inventory and check database connectivity")
     check_parser.add_argument("-i", "--inventory", required=True, help="inventory/config YAML path")
+
+    kafka_parser = subparsers.add_parser("kafka-check", help="check or prepare TS Kafka topic")
+    kafka_parser.add_argument("-i", "--inventory", required=True, help="TS inventory/config YAML path")
+    kafka_parser.add_argument("--apply", action="store_true", help="delete/create/describe the configured topic")
 
     param_parser = subparsers.add_parser("param", help="render manual DB parameter commands only")
     param_parser.add_argument("-i", "--inventory", required=True, help="inventory/config YAML path")
@@ -77,7 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_source.add_argument("-i", "--inventory", help="inventory/config YAML path")
     run_source.add_argument("--task", help="legacy task YAML path")
     run_parser.add_argument("--plan-only", action="store_true", help="write the job plan without executing")
-    run_parser.add_argument("--stage", choices=["load", "destroy", "bench"], help="run only one TPC-C stage")
+    run_parser.add_argument(
+        "--stage",
+        choices=["load", "destroy", "bench", "ts-write", "ts-query", "point-query", "ap-query", "tpch-load", "tpch-query"],
+        help="run only one benchmark stage",
+    )
 
     report_parser = subparsers.add_parser("report", help="generate Markdown report for a job")
     report_parser.add_argument("-i", "--inventory", help="inventory/config YAML path; accepted for playbook compatibility")
@@ -88,11 +99,16 @@ def build_parser() -> argparse.ArgumentParser:
     progress_parser.add_argument("--watch", nargs="?", const=5, type=int, help="refresh every N seconds; default is 5")
 
     list_parser = subparsers.add_parser("list", help="list completed benchmark results")
+    list_parser.add_argument("-t", "--type", choices=CONFIG_TYPES, default="tpcc", help="benchmark type to list")
     list_parser.add_argument("--job", help="only list completed results for this job")
 
-    delete_parser = subparsers.add_parser("delete", help="delete one job and all referenced run/work artifacts")
-    delete_parser.add_argument("job_id", help="job id under runs/jobs")
+    delete_parser = subparsers.add_parser("delete", help="delete one or more benchmark results by ID")
+    delete_parser.add_argument("ids", nargs="+", help="result ID(s) shown by list, or full run ID(s)")
     delete_parser.add_argument("-f", "--force", action="store_true", help="delete without typing DELETE")
+
+    clean_parser = subparsers.add_parser("clean", help="clean stale running runs whose process is gone or failed runs")
+    clean_parser.add_argument("--job", help="only clean stale or failed runs in this job")
+    clean_parser.add_argument("-f", "--force", action="store_true", help="clean without typing CLEAN")
 
     tools_parser = subparsers.add_parser("tools", help="manage external benchmark tools")
     tools_subparsers = tools_parser.add_subparsers(dest="tools_command", required=True)
@@ -119,6 +135,10 @@ def main() -> None:
         failures = check_inventory(root, Path(args.inventory))
         if failures:
             raise SystemExit(1)
+    elif args.command == "kafka-check":
+        failures = kafka_check(root, Path(args.inventory), apply=args.apply)
+        if failures:
+            raise SystemExit(failures)
     elif args.command == "param":
         failures = render_param_commands(root, Path(args.inventory), offline=args.offline)
         if failures:
@@ -130,6 +150,9 @@ def main() -> None:
         source = Path(args.inventory or args.task)
         try:
             run_task_job(root=root, task_path=source, plan_only=args.plan_only, stage=args.stage)
+        except ValueError as exc:
+            print_status("FAIL", str(exc))
+            raise SystemExit(1) from exc
         except JobFailedError:
             raise SystemExit(1)
     elif args.command == "report":
@@ -144,12 +167,20 @@ def main() -> None:
             raise SystemExit(1) from exc
         print_status("OK", f"report: {report_path}")
     elif args.command == "list":
-        failures = show_completed_results(root=root, job_id=args.job)
+        failures = show_completed_results(root=root, job_id=args.job, benchmark_type=args.type)
         if failures:
             raise SystemExit(failures)
     elif args.command == "delete":
         try:
-            failures = delete_job(root=root, job_id=args.job_id, force=args.force)
+            failures = delete_results(root=root, result_ids=args.ids, force=args.force)
+        except ValueError as exc:
+            print_status("FAIL", str(exc))
+            raise SystemExit(1) from exc
+        if failures:
+            raise SystemExit(failures)
+    elif args.command == "clean":
+        try:
+            failures = clean_stale_runs(root=root, job_id=args.job, force=args.force)
         except ValueError as exc:
             print_status("FAIL", str(exc))
             raise SystemExit(1) from exc
@@ -174,6 +205,7 @@ def main() -> None:
 
 def configure_main() -> None:
     parser = argparse.ArgumentParser(prog="configure")
+    parser.add_argument("-t", "--type", choices=CONFIG_TYPES, default="tpcc", help="benchmark type")
     parser.add_argument("-c", "--config", required=True, help="target alias list such as pg, ym-heap, or pg,ym-heap")
     parser.add_argument("-o", "--output", default="automan.yml", help="output path")
     args = parser.parse_args()
@@ -188,7 +220,7 @@ def configure_main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     if aliases:
-        inventory = _compose_tpcc_inventory(root, aliases)
+        inventory = _compose_inventory(root, args.type, aliases)
         write_yaml(output, inventory)
         target_names = ", ".join(_configured_target_names(inventory))
         print_status("OK", f"configured targets: {', '.join(aliases)} -> {output}")
@@ -196,7 +228,7 @@ def configure_main() -> None:
     else:
         template = _template_path(root, args.config)
         shutil.copyfile(template, output)
-        print_status("OK", f"configured {args.config} -> {output}")
+        print_status("OK", f"configured {args.type}/{args.config} -> {output}")
     print_status("HINT", f"next: ./check.yml -i {args.output}")
 
 
@@ -277,7 +309,8 @@ def _refresh_live_parameter_facts(task, fact_provider: FactProvider | None = Non
             print_status("FAIL", f"{target.id}: {exc}")
             failures += 1
             continue
-        conflicts = live_parameter_conflicts(target, facts, max(task.matrix.terminals))
+        max_terminals = max(task.matrix.terminals) if task.matrix is not None else 1
+        conflicts = live_parameter_conflicts(target, facts, max_terminals)
         if conflicts:
             conflict_text = ", ".join(f"{key}={old} (live recommendation {new})" for key, (old, new) in conflicts.items())
             print_status(
@@ -290,7 +323,7 @@ def _refresh_live_parameter_facts(task, fact_provider: FactProvider | None = Non
             )
             failures += 1
             continue
-        refresh_auto_parameter_commands(target, facts, max(task.matrix.terminals))
+        refresh_auto_parameter_commands(target, facts, max_terminals)
         print_status(
             "OK",
             f"{target.id}: probed host facts cpu_threads={facts.get('cpu_threads')} memory_gb={facts.get('memory_gb')}",
@@ -366,20 +399,26 @@ def _normalize_config_name(name: str) -> str:
         normalized = normalized[len("conf/"):]
     if normalized.endswith((".yml", ".yaml")):
         normalized = normalized.rsplit(".", 1)[0]
-    if normalized.startswith("tpcc/targets/"):
-        normalized = normalized[len("tpcc/targets/"):]
+    for prefix in ("tpcc/targets/", "ts/targets/", "ap/targets/", "tpch/targets/", "tpcc/", "ts/", "ap/", "tpch/"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+            break
     return normalized
 
 
 def _compose_tpcc_inventory(root: Path, aliases: Iterable[str]) -> dict:
-    base_path = root / "conf" / "tpcc" / "base.yml"
+    return _compose_inventory(root, "tpcc", aliases)
+
+
+def _compose_inventory(root: Path, benchmark: str, aliases: Iterable[str]) -> dict:
+    base_path = root / "conf" / benchmark / "base.yml"
     if not base_path.exists():
         raise ValueError(f"template base not found: {base_path}")
     inventory = copy.deepcopy(load_yaml(base_path))
     children = _inventory_children(inventory, base_path)
 
     for alias in aliases:
-        target_path = root / "conf" / "tpcc" / "targets" / f"{alias}.yml"
+        target_path = root / "conf" / benchmark / "targets" / f"{alias}.yml"
         if not target_path.exists():
             raise ValueError(f"target fragment not found for {alias}: {target_path}")
         fragment = load_yaml(target_path)

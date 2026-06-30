@@ -19,7 +19,7 @@ import paramiko
 from automan_core.models import RunSpec, Target
 
 
-SYSTEM_PHASES = {"runDatabaseBuild.sh", "runBenchmark.sh"}
+SYSTEM_PHASES = {"runDatabaseBuild.sh", "runBenchmark.sh", "ts-write", "ts-query", "point-query", "ap-query", "tpch-load", "tpch-query"}
 DEFAULT_PERF_PHASES = {"runBenchmark.sh"}
 REMOTE_FETCH_MAX_BYTES = 128 * 1024 * 1024
 

@@ -309,25 +309,25 @@ When the active phase is `runBenchmark.sh`, progress also prints elapsed time, e
 Show completed run results from all jobs:
 
 ```bash
-./automan list
+./automan list -t tpcc
 ```
 
 Show completed run results for one job:
 
 ```bash
-./automan list --job <job_id>
+./automan list -t tpcc --job <job_id>
 ```
 
-`list` only prints runs that have finished successfully and already produced parseable BenchmarkSQL performance output. If a job has finished 100 terminals but 500 and 1000 terminals are still pending or failed, the 100-terminal result is still shown. Each row includes a stable `ID`, derived from the run id by removing the job prefix, such as `pg31-w100-c500`.
+`list` defaults to `-t tpcc`; use `-t ts` for TS runs. It only prints runs that have finished successfully and already produced parseable BenchmarkSQL performance output. If a job has finished 100 terminals but 500 and 1000 terminals are still pending or failed, the 100-terminal result is still shown. Each row includes a stable `ID`, derived from the run id by removing the job prefix, such as `pg31-w100-c500`.
 
-Delete one whole job and all referenced run/work artifacts:
+Delete one or more benchmark results by result ID:
 
 ```bash
-./automan delete <job_id>
-./automan delete <job_id> -f
+./automan delete <id>
+./automan delete <id> <id> -f
 ```
 
-Without `-f`, delete requires typing `DELETE`. Deleting removes `runs/jobs/<job_id>/`, every `runs/<run_id>/` referenced by the job plan, every referenced `work/tpcc/benchmarksql/<run_id>/` workspace, and exact-match collector/archive directories for that job id.
+Without `-f`, delete requires typing `DELETE`. IDs are the stable hash `ID` values printed by `list`; full run IDs are also accepted. Deleting removes each selected `runs/<run_id>/` and referenced work directory, updates the owning job metadata, and removes the job directory when no runs remain.
 
 List reads:
 

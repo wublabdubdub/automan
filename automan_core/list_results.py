@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
 from automan_core.config import load_yaml
 from automan_core.result_summary import load_published_run_result
 from automan_core.report import _run_result, find_job_dir, find_job_dirs
+
+RESULT_ID_MIN_LENGTH = 10
+RESULT_ID_MAX_LENGTH = 40
 
 
 def show_completed_results(root: Path, job_id: str | None = None, benchmark_type: str = "tpcc") -> int:
@@ -22,37 +26,43 @@ def show_completed_results(root: Path, job_id: str | None = None, benchmark_type
 
 
 def completed_result_rows(root: Path, job_id: str | None = None, benchmark_type: str = "tpcc") -> list[dict[str, Any]]:
+    benchmark_type = benchmark_type.lower()
     job_dirs = [find_job_dir(root, job_id)] if job_id else find_job_dirs(root)
+    ids_by_run = result_id_map(root)
     rows: list[dict[str, Any]] = []
     for job_dir in [path for path in job_dirs if path is not None]:
         plan = load_yaml(job_dir / "resolved-plan.yaml")
         job_name = str(plan.get("job_id") or job_dir.name)
-        benchmark = str(plan.get("benchmark", "tpcc"))
+        benchmark = _plan_benchmark_type(plan)
+        if benchmark != benchmark_type:
+            continue
         targets = _target_map(plan)
         for run in _runs_for_listing(root, job_name, benchmark, plan, benchmark_type):
             result = load_published_run_result(root, run) or _run_result(root, run)
             if result.get("status") != "success" and benchmark_type == "tpcc":
                 continue
             target = targets.get(str(result.get("target_id")), {})
+            canonical_run_id = str(run.get("run_id"))
             run_id = str(result.get("run_id"))
+            result_id = ids_by_run.get((job_name, canonical_run_id), stable_result_id(job_name, canonical_run_id))
             result_type = _result_benchmark_type(benchmark, result)
             if result_type != benchmark_type:
                 continue
             if result_type == "ts":
-                rows.append(_ts_row(job_name, run_id, result, target))
+                rows.append(_ts_row(job_name, run_id, result_id, result, target))
                 continue
             if result_type == "ap":
-                rows.append(_ap_row(job_name, run_id, result, target))
+                rows.append(_ap_row(job_name, run_id, result_id, result, target))
                 continue
             if result_type == "tpch":
-                rows.append(_tpch_row(job_name, run_id, result, target))
+                rows.append(_tpch_row(job_name, run_id, result_id, result, target))
                 continue
             if result.get("measured_tpmc") is None or result.get("measured_tpmtotal") is None:
                 continue
             rows.append(
                 {
                     "benchmark": "tpcc",
-                    "id": stable_result_id(job_name, run_id),
+                    "id": result_id,
                     "job": job_name,
                     "run": run_id,
                     "target": result.get("target_id"),
@@ -70,6 +80,87 @@ def completed_result_rows(root: Path, job_id: str | None = None, benchmark_type:
             )
     rows.sort(key=lambda row: str(row.get("session_end") or ""), reverse=True)
     return rows
+
+
+def result_id_map(root: Path) -> dict[tuple[str, str], str]:
+    records = sorted(_all_run_records(root))
+    lengths = {record: RESULT_ID_MIN_LENGTH for record in records}
+    while True:
+        ids = {record: _hash_result_id(_result_identity(*record), lengths[record]) for record in records}
+        collisions = _colliding_run_ids(ids)
+        if not collisions:
+            return ids
+        if all(lengths[record] >= RESULT_ID_MAX_LENGTH for record in collisions):
+            return ids
+        for record in collisions:
+            lengths[record] = min(RESULT_ID_MAX_LENGTH, lengths[record] + 2)
+
+
+def unique_result_id(root: Path, job_id: str, run_id: str) -> str:
+    return result_id_map(root).get((job_id, run_id), stable_result_id(job_id, run_id))
+
+
+def legacy_result_id(job_id: str, run_id: str) -> str:
+    prefix = f"{job_id}-"
+    if run_id.startswith(prefix):
+        return run_id[len(prefix):]
+    return run_id
+
+
+def _all_run_records(root: Path) -> set[tuple[str, str]]:
+    records: set[tuple[str, str]] = set()
+    for job_dir in find_job_dirs(root):
+        try:
+            plan = load_yaml(job_dir / "resolved-plan.yaml")
+        except (OSError, ValueError):
+            continue
+        job_id = str(plan.get("job_id") or job_dir.name)
+        benchmark = _plan_benchmark_type(plan)
+        for run in _runs_for_listing(root, job_id, benchmark, plan, benchmark):
+            run_id = str(run.get("run_id"))
+            if run_id and run_id != "None":
+                records.add((job_id, run_id))
+    return records
+
+
+def _colliding_run_ids(ids: dict[tuple[str, str], str]) -> set[tuple[str, str]]:
+    seen: dict[str, tuple[str, str]] = {}
+    collisions: set[tuple[str, str]] = set()
+    for record, result_id in ids.items():
+        previous = seen.get(result_id)
+        if previous is None:
+            seen[result_id] = record
+            continue
+        collisions.add(previous)
+        collisions.add(record)
+    return collisions
+
+
+def _result_identity(job_id: str, run_id: str) -> str:
+    return f"{job_id}\0{run_id}"
+
+
+def _hash_result_id(run_id: str, length: int = RESULT_ID_MIN_LENGTH) -> str:
+    return hashlib.sha1(run_id.encode("utf-8")).hexdigest()[:length]
+
+
+def _plan_benchmark_type(plan: dict[str, Any]) -> str:
+    raw = plan.get("benchmark")
+    if raw:
+        return str(raw).lower()
+    stage_sets = {
+        "ts": {"ts-write", "ts-query", "point-query"},
+        "ap": {"ap-query"},
+        "tpch": {"tpch-load", "tpch-query"},
+    }
+    for run in plan.get("runs", []) if isinstance(plan.get("runs", []), list) else []:
+        if not isinstance(run, dict):
+            continue
+        stage = run.get("stage")
+        for benchmark, stages in stage_sets.items():
+            if stage in stages:
+                return benchmark
+    return "tpcc"
 
 
 def _runs_for_listing(root: Path, job_name: str, benchmark: str, plan: dict[str, Any], benchmark_type: str) -> list[dict[str, Any]]:
@@ -119,10 +210,10 @@ def _result_benchmark_type(plan_benchmark: str, result: dict[str, Any]) -> str:
     return "tpcc"
 
 
-def _ts_row(job_name: str, run_id: str, result: dict[str, Any], target: dict[str, Any]) -> dict[str, Any]:
+def _ts_row(job_name: str, run_id: str, result_id: str, result: dict[str, Any], target: dict[str, Any]) -> dict[str, Any]:
     row = {
         "benchmark": "ts",
-        "id": stable_result_id(job_name, run_id),
+        "id": result_id,
         "job": job_name,
         "run": run_id,
         "stage": result.get("stage"),
@@ -165,10 +256,10 @@ def _ts_row(job_name: str, run_id: str, result: dict[str, Any], target: dict[str
     return row
 
 
-def _ap_row(job_name: str, run_id: str, result: dict[str, Any], target: dict[str, Any]) -> dict[str, Any]:
+def _ap_row(job_name: str, run_id: str, result_id: str, result: dict[str, Any], target: dict[str, Any]) -> dict[str, Any]:
     return {
         "benchmark": "ap",
-        "id": stable_result_id(job_name, run_id),
+        "id": result_id,
         "job": job_name,
         "run": run_id,
         "stage": result.get("stage"),
@@ -194,10 +285,10 @@ def _ap_row(job_name: str, run_id: str, result: dict[str, Any], target: dict[str
     }
 
 
-def _tpch_row(job_name: str, run_id: str, result: dict[str, Any], target: dict[str, Any]) -> dict[str, Any]:
+def _tpch_row(job_name: str, run_id: str, result_id: str, result: dict[str, Any], target: dict[str, Any]) -> dict[str, Any]:
     return {
         "benchmark": "tpch",
-        "id": stable_result_id(job_name, run_id),
+        "id": result_id,
         "job": job_name,
         "run": run_id,
         "stage": result.get("stage"),
@@ -224,10 +315,7 @@ def _tpch_row(job_name: str, run_id: str, result: dict[str, Any], target: dict[s
 
 
 def stable_result_id(job_id: str, run_id: str) -> str:
-    prefix = f"{job_id}-"
-    if run_id.startswith(prefix):
-        return run_id[len(prefix):]
-    return run_id
+    return _hash_result_id(_result_identity(job_id, run_id))
 
 
 def _target_map(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:

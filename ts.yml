@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+stage=""
+args=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -s|--stage)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "[FAIL] -s/--stage requires one of: ts-write, ts-query, point-query" >&2
+        exit 2
+      fi
+      stage="$1"
+      ;;
+    -s=*|--stage=*)
+      stage="${1#*=}"
+      ;;
+    *)
+      args+=("$1")
+      ;;
+  esac
+  shift
+done
+
+case "$stage" in
+  ""|ts-write|ts-query|point-query)
+    ;;
+  *)
+    echo "[FAIL] invalid stage: $stage; expected one of: ts-write, ts-query, point-query" >&2
+    exit 2
+    ;;
+esac
+
+if [[ -n "$stage" ]]; then
+  args+=("-e" "stage=$stage")
+fi
+
+exec ansible-playbook playbooks/ts.yml "${args[@]}"

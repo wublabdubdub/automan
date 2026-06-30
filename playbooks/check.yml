@@ -1,5 +1,5 @@
 ---
-- name: Check Automan TPC-C benchmark host
+- name: Check Automan benchmark host
   hosts: "{{ automan_hosts | default('bench') }}"
   gather_facts: false
   vars:
@@ -8,8 +8,22 @@
     automan_root: "{{ automan_workdir | default('/root/automan', true) }}"
     automan_python: "{{ python_bin | default('python3.8', true) }}"
     benchmarksql_dir: "{{ automan_root }}/tools/benchmarksql"
+  pre_tasks:
+    - name: Validate Automan inventory before remote checks
+      ansible.builtin.command:
+        argv:
+          - "{{ automan_python }}"
+          - -m
+          - automan_core
+          - validate
+          - -i
+          - "{{ automan_config_file }}"
+      args:
+        chdir: "{{ automan_root }}"
+      changed_when: false
   roles:
     - role: bench_tool
+      when: benchmark | default('tpcc') == 'tpcc'
       tags:
         - check
         - bench_tool

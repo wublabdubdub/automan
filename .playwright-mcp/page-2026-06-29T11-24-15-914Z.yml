@@ -1,0 +1,682 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - paragraph [ref=e4]: Engineering report / TPC-C / BenchmarkSQL
+    - heading "PG12 与 YMatrix Heap TPC-C 对比测试报告" [level=1] [ref=e5]
+    - region "report metadata" [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]: Host
+        - strong [ref=e9]: 172.16.100.143:/root/automan
+      - generic [ref=e10]:
+        - generic [ref=e11]: Job ID
+        - strong [ref=e12]: 20260628-224417-tpcc
+      - generic [ref=e13]:
+        - generic [ref=e14]: Matrix
+        - strong [ref=e15]: 100 warehouses, 100/500/1000 terminals
+      - generic [ref=e16]:
+        - generic [ref=e17]: Style
+        - strong [ref=e18]: black and white
+  - heading "PG12 与 YMatrix Heap TPC-C 对比测试报告" [level=1] [ref=e19]
+  - heading "1. 摘要" [level=2] [ref=e20]
+  - paragraph [ref=e21]:
+    - text: 本报告基于
+    - code [ref=e22]: 172.16.100.143:/root/automan
+    - text: 上的 TPC-C 自动化测试结果，对 PostgreSQL 12 heap 单节点目标（下文简称 PG12）与 YMatrix heap master-only 目标（下文简称 YMatrix Heap）进行性能和资源占用对比分析。
+  - paragraph [ref=e23]: 本次分析覆盖吞吐结果、并发扩展趋势、CPU/内存/IO 资源占用、perf 采样产物、BenchmarkSQL 标准输出和错误日志。报告重点不只呈现最终 tpmC 数字，也关注测试过程是否稳定、日志是否干净，以及资源消耗与吞吐之间是否匹配。
+  - heading "2. 数据来源与测试范围" [level=2] [ref=e24]
+  - heading "2.1 数据来源" [level=3] [ref=e25]
+  - list [ref=e26]:
+    - listitem [ref=e27]:
+      - text: "- 执行机："
+      - code [ref=e28]: 172.16.100.143
+    - listitem [ref=e29]:
+      - text: "- 工作目录："
+      - code [ref=e30]: /root/automan
+    - listitem [ref=e31]:
+      - text: "- Job ID："
+      - code [ref=e32]: 20260628-224417-tpcc
+    - listitem [ref=e33]:
+      - text: "- 结果查看命令："
+      - code [ref=e34]: ./automan list -t tpcc
+    - listitem [ref=e35]:
+      - text: "- 资源采集目录："
+      - code [ref=e36]: /root/automan/runs/<run_id>/collectors/runBenchmark.sh/database/
+    - listitem [ref=e37]:
+      - text: "- BenchmarkSQL 日志目录："
+      - code [ref=e38]: /root/automan/runs/<run_id>/logs/
+  - heading "2.2 测试对象" [level=3] [ref=e39]
+  - table [ref=e41]:
+    - rowgroup [ref=e42]:
+      - row "对象 Automan Target 数据库地址 端口 数据库 DDL Profile" [ref=e43]:
+        - columnheader "对象" [ref=e44]
+        - columnheader "Automan Target" [ref=e45]
+        - columnheader "数据库地址" [ref=e46]
+        - columnheader "端口" [ref=e47]
+        - columnheader "数据库" [ref=e48]
+        - columnheader "DDL Profile" [ref=e49]
+    - rowgroup [ref=e50]:
+      - row "PostgreSQL 12 heap 单节点 pg 192.168.100.30 5232 tpcc postgresql_heap_single_node" [ref=e51]:
+        - cell "PostgreSQL 12 heap 单节点" [ref=e52]
+        - cell "pg" [ref=e53]:
+          - code [ref=e54]: pg
+        - cell "192.168.100.30" [ref=e55]:
+          - code [ref=e56]: 192.168.100.30
+        - cell "5232" [ref=e57]
+        - cell "tpcc" [ref=e58]:
+          - code [ref=e59]: tpcc
+        - cell "postgresql_heap_single_node" [ref=e60]:
+          - code [ref=e61]: postgresql_heap_single_node
+      - row "YMatrix heap master-only ymatrix_heap 192.168.100.29 5432 tpcc ymatrix_heap_master_only" [ref=e62]:
+        - cell "YMatrix heap master-only" [ref=e63]
+        - cell "ymatrix_heap" [ref=e64]:
+          - code [ref=e65]: ymatrix_heap
+        - cell "192.168.100.29" [ref=e66]:
+          - code [ref=e67]: 192.168.100.29
+        - cell "5432" [ref=e68]
+        - cell "tpcc" [ref=e69]:
+          - code [ref=e70]: tpcc
+        - cell "ymatrix_heap_master_only" [ref=e71]:
+          - code [ref=e72]: ymatrix_heap_master_only
+  - heading "2.3 测试矩阵" [level=3] [ref=e73]
+  - table [ref=e75]:
+    - rowgroup [ref=e76]:
+      - row "维度 值" [ref=e77]:
+        - columnheader "维度" [ref=e78]
+        - columnheader "值" [ref=e79]
+    - rowgroup [ref=e80]:
+      - row "Benchmark TPC-C / BenchmarkSQL" [ref=e81]:
+        - cell "Benchmark" [ref=e82]
+        - cell "TPC-C / BenchmarkSQL" [ref=e83]
+      - row "Warehouses 100" [ref=e84]:
+        - cell "Warehouses" [ref=e85]
+        - cell "100" [ref=e86]
+      - row "Terminals 100, 500, 1000" [ref=e87]:
+        - cell "Terminals" [ref=e88]
+        - cell "100, 500, 1000" [ref=e89]
+      - row "Run Mins 15" [ref=e90]:
+        - cell "Run Mins" [ref=e91]
+        - cell "15" [ref=e92]
+      - row "系统采样间隔 1 秒" [ref=e93]:
+        - cell "系统采样间隔" [ref=e94]
+        - cell "1 秒" [ref=e95]
+      - row "系统采样工具 vmstat, iostat -x, mpstat -P ALL, pidstat -durh" [ref=e96]:
+        - cell "系统采样工具" [ref=e97]
+        - cell "vmstat, iostat -x, mpstat -P ALL, pidstat -durh" [ref=e98]:
+          - code [ref=e99]: vmstat
+          - text: ","
+          - code [ref=e100]: iostat -x
+          - text: ","
+          - code [ref=e101]: mpstat -P ALL
+          - text: ","
+          - code [ref=e102]: pidstat -durh
+      - row "perf 采样 runBenchmark 阶段 3 段采样，每段 60 秒，99 Hz" [ref=e103]:
+        - cell "perf 采样" [ref=e104]
+        - cell "runBenchmark 阶段 3 段采样，每段 60 秒，99 Hz" [ref=e105]
+  - heading "2.4 实际生效参数" [level=3] [ref=e106]
+  - paragraph [ref=e107]:
+    - text: 本报告中的参数以测试后登录数据库执行
+    - code [ref=e108]: pg_settings
+    - text: 查询得到的实际生效值为准，而不是以 Automan 计划文件中的推荐值为准。查询时间为 2026-06-29，查询来源为
+    - code [ref=e109]: 172.16.100.143
+    - text: 通过
+    - code [ref=e110]: psql
+    - text: 连接两侧数据库。
+  - table [ref=e112]:
+    - rowgroup [ref=e113]:
+      - row "参数 PG12 实际值 PG12 来源 YMatrix Heap 实际值 YMatrix 来源" [ref=e114]:
+        - columnheader "参数" [ref=e115]
+        - columnheader "PG12 实际值" [ref=e116]
+        - columnheader "PG12 来源" [ref=e117]
+        - columnheader "YMatrix Heap 实际值" [ref=e118]
+        - columnheader "YMatrix 来源" [ref=e119]
+    - rowgroup [ref=e120]:
+      - row "server_version 12.12 - 12.12 -" [ref=e121]:
+        - cell "server_version" [ref=e122]:
+          - code [ref=e123]: server_version
+        - cell "12.12" [ref=e124]:
+          - code [ref=e125]: "12.12"
+        - cell "-" [ref=e126]
+        - cell "12.12" [ref=e127]:
+          - code [ref=e128]: "12.12"
+        - cell "-" [ref=e129]
+      - row "max_connections 1050 configuration file 1050 configuration file" [ref=e130]:
+        - cell "max_connections" [ref=e131]:
+          - code [ref=e132]: max_connections
+        - cell "1050" [ref=e133]:
+          - code [ref=e134]: "1050"
+        - cell "configuration file" [ref=e135]
+        - cell "1050" [ref=e136]:
+          - code [ref=e137]: "1050"
+        - cell "configuration file" [ref=e138]
+      - row "shared_buffers 62GB configuration file 64GB configuration file" [ref=e139]:
+        - cell "shared_buffers" [ref=e140]:
+          - code [ref=e141]: shared_buffers
+        - cell "62GB" [ref=e142]:
+          - code [ref=e143]: 62GB
+        - cell "configuration file" [ref=e144]
+        - cell "64GB" [ref=e145]:
+          - code [ref=e146]: 64GB
+        - cell "configuration file" [ref=e147]
+      - row "effective_cache_size 175GB configuration file 128GB configuration file" [ref=e148]:
+        - cell "effective_cache_size" [ref=e149]:
+          - code [ref=e150]: effective_cache_size
+        - cell "175GB" [ref=e151]:
+          - code [ref=e152]: 175GB
+        - cell "configuration file" [ref=e153]
+        - cell "128GB" [ref=e154]:
+          - code [ref=e155]: 128GB
+        - cell "configuration file" [ref=e156]
+      - row "work_mem 61MB configuration file 4MB configuration file" [ref=e157]:
+        - cell "work_mem" [ref=e158]:
+          - code [ref=e159]: work_mem
+        - cell "61MB" [ref=e160]:
+          - code [ref=e161]: 61MB
+        - cell "configuration file" [ref=e162]
+        - cell "4MB" [ref=e163]:
+          - code [ref=e164]: 4MB
+        - cell "configuration file" [ref=e165]
+      - row "maintenance_work_mem 12GB configuration file 2GB configuration file" [ref=e166]:
+        - cell "maintenance_work_mem" [ref=e167]:
+          - code [ref=e168]: maintenance_work_mem
+        - cell "12GB" [ref=e169]:
+          - code [ref=e170]: 12GB
+        - cell "configuration file" [ref=e171]
+        - cell "2GB" [ref=e172]:
+          - code [ref=e173]: 2GB
+        - cell "configuration file" [ref=e174]
+      - row "max_wal_size 64GB configuration file 64GB configuration file" [ref=e175]:
+        - cell "max_wal_size" [ref=e176]:
+          - code [ref=e177]: max_wal_size
+        - cell "64GB" [ref=e178]:
+          - code [ref=e179]: 64GB
+        - cell "configuration file" [ref=e180]
+        - cell "64GB" [ref=e181]:
+          - code [ref=e182]: 64GB
+        - cell "configuration file" [ref=e183]
+      - row "min_wal_size 8GB configuration file 8GB configuration file" [ref=e184]:
+        - cell "min_wal_size" [ref=e185]:
+          - code [ref=e186]: min_wal_size
+        - cell "8GB" [ref=e187]:
+          - code [ref=e188]: 8GB
+        - cell "configuration file" [ref=e189]
+        - cell "8GB" [ref=e190]:
+          - code [ref=e191]: 8GB
+        - cell "configuration file" [ref=e192]
+      - row "checkpoint_timeout 30min configuration file 未返回 -" [ref=e193]:
+        - cell "checkpoint_timeout" [ref=e194]:
+          - code [ref=e195]: checkpoint_timeout
+        - cell "30min" [ref=e196]:
+          - code [ref=e197]: 30min
+        - cell "configuration file" [ref=e198]
+        - cell "未返回" [ref=e199]
+        - cell "-" [ref=e200]
+      - row "checkpoint_completion_target 0.9 configuration file 0.9 configuration file" [ref=e201]:
+        - cell "checkpoint_completion_target" [ref=e202]:
+          - code [ref=e203]: checkpoint_completion_target
+        - cell "0.9" [ref=e204]:
+          - code [ref=e205]: "0.9"
+        - cell "configuration file" [ref=e206]
+        - cell "0.9" [ref=e207]:
+          - code [ref=e208]: "0.9"
+        - cell "configuration file" [ref=e209]
+      - row "vacuum_cost_limit 10000 configuration file 10000 configuration file" [ref=e210]:
+        - cell "vacuum_cost_limit" [ref=e211]:
+          - code [ref=e212]: vacuum_cost_limit
+        - cell "10000" [ref=e213]:
+          - code [ref=e214]: "10000"
+        - cell "configuration file" [ref=e215]
+        - cell "10000" [ref=e216]:
+          - code [ref=e217]: "10000"
+        - cell "configuration file" [ref=e218]
+  - paragraph [ref=e219]:
+    - text: 两侧参数并不完全相同。PG12 的
+    - code [ref=e220]: effective_cache_size
+    - text: 、
+    - code [ref=e221]: work_mem
+    - text: 、
+    - code [ref=e222]: maintenance_work_mem
+    - text: 明显高于 YMatrix Heap；YMatrix Heap 的
+    - code [ref=e223]: shared_buffers
+    - text: 略高于 PG12。尤其是
+    - code [ref=e224]: work_mem
+    - text: 差异较大，PG12 为 61MB，YMatrix Heap 为 4MB。因此，本轮结果应解释为“当前实际部署参数下的对比”，不应表述为严格等参数对比。
+  - heading "3. 测试结果汇总" [level=2] [ref=e225]
+  - heading "3.1 BenchmarkSQL 吞吐结果" [level=3] [ref=e226]
+  - table [ref=e228]:
+    - rowgroup [ref=e229]:
+      - row "Terminals PG12 tpmC YMatrix Heap tpmC PG12 相对 YMatrix PG12 tpmTOTAL YMatrix Heap tpmTOTAL 结论" [ref=e230]:
+        - columnheader "Terminals" [ref=e231]
+        - columnheader "PG12 tpmC" [ref=e232]
+        - columnheader "YMatrix Heap tpmC" [ref=e233]
+        - columnheader "PG12 相对 YMatrix" [ref=e234]
+        - columnheader "PG12 tpmTOTAL" [ref=e235]
+        - columnheader "YMatrix Heap tpmTOTAL" [ref=e236]
+        - columnheader "结论" [ref=e237]
+    - rowgroup [ref=e238]:
+      - row "100 104,138.55 102,325.19 1.02x 235,598.78 231,604.27 两者接近，PG12 小幅领先" [ref=e239]:
+        - cell "100" [ref=e240]
+        - cell "104,138.55" [ref=e241]
+        - cell "102,325.19" [ref=e242]
+        - cell "1.02x" [ref=e243]
+        - cell "235,598.78" [ref=e244]
+        - cell "231,604.27" [ref=e245]
+        - cell "两者接近，PG12 小幅领先" [ref=e246]
+      - row "500 104,498.54 103,377.64 1.01x 236,238.47 234,022.08 两者接近，PG12 小幅领先" [ref=e247]:
+        - cell "500" [ref=e248]
+        - cell "104,498.54" [ref=e249]
+        - cell "103,377.64" [ref=e250]
+        - cell "1.01x" [ref=e251]
+        - cell "236,238.47" [ref=e252]
+        - cell "234,022.08" [ref=e253]
+        - cell "两者接近，PG12 小幅领先" [ref=e254]
+      - row "1000 137,573.89 43,284.76 3.18x 311,237.68 98,033.39 PG12 高于对比对象，YMatrix Heap 吞吐明显下降" [ref=e255]:
+        - cell "1000" [ref=e256]
+        - cell "137,573.89" [ref=e257]
+        - cell "43,284.76" [ref=e258]
+        - cell "3.18x" [ref=e259]
+        - cell "311,237.68" [ref=e260]
+        - cell "98,033.39" [ref=e261]
+        - cell "PG12 高于对比对象，YMatrix Heap 吞吐明显下降" [ref=e262]
+  - paragraph [ref=e263]: 从最终 tpmC 看，100 和 500 terminals 下两者结果非常接近，PG12 分别领先约 1.77% 和 1.08%。到 1000 terminals 时，PG12 的 tpmC 上升到 137,573.89，而 YMatrix Heap 下降到 43,284.76，PG12 约为 YMatrix Heap 的 3.18 倍。
+  - heading "3.2 并发扩展趋势" [level=3] [ref=e264]
+  - table [ref=e266]:
+    - rowgroup [ref=e267]:
+      - row "对象 100 -> 500 terminals 500 -> 1000 terminals 现象" [ref=e268]:
+        - columnheader "对象" [ref=e269]
+        - columnheader "100 -> 500 terminals" [ref=e270]
+        - columnheader "500 -> 1000 terminals" [ref=e271]
+        - columnheader "现象" [ref=e272]
+    - rowgroup [ref=e273]:
+      - row "PG12 tpmC +0.35% tpmC +31.65% 高并发下吞吐继续提升" [ref=e274]:
+        - cell "PG12" [ref=e275]
+        - cell "tpmC +0.35%" [ref=e276]
+        - cell "tpmC +31.65%" [ref=e277]
+        - cell "高并发下吞吐继续提升" [ref=e278]
+      - row "YMatrix Heap tpmC +1.03% tpmC -58.13% 1000 并发出现明显退化" [ref=e279]:
+        - cell "YMatrix Heap" [ref=e280]
+        - cell "tpmC +1.03%" [ref=e281]
+        - cell "tpmC -58.13%" [ref=e282]
+        - cell "1000 并发出现明显退化" [ref=e283]
+  - paragraph [ref=e284]: PG12 在 100 和 500 terminals 下基本处于同一吞吐平台，到 1000 terminals 时吞吐继续提升，说明该负载下 PG12 尚能从更高客户端并发中获得收益。YMatrix Heap 在 100 和 500 terminals 下同样接近平台值，但 1000 terminals 时吞吐下降超过一半，说明系统进入了非线性退化区间。
+  - heading "4. 资源占用对比" [level=2] [ref=e285]
+  - paragraph [ref=e286]:
+    - text: 以下资源数据均来自
+    - code [ref=e287]: runBenchmark.sh
+    - text: 阶段。CPU 使用率采用
+    - code [ref=e288]: mpstat all
+    - text: 统计，Run Queue、内存和部分系统指标来自
+    - code [ref=e289]: vmstat
+    - text: ，IO 指标来自
+    - code [ref=e290]: iostat -x
+    - text: 中物理块设备统计。
+  - heading "4.1 CPU 与调度压力" [level=3] [ref=e291]
+  - table [ref=e293]:
+    - rowgroup [ref=e294]:
+      - row "Terminals 对象 CPU 平均 CPU P95 CPU 最大 Run Queue 平均 Run Queue P95 Run Queue 最大" [ref=e295]:
+        - columnheader "Terminals" [ref=e296]
+        - columnheader "对象" [ref=e297]
+        - columnheader "CPU 平均" [ref=e298]
+        - columnheader "CPU P95" [ref=e299]
+        - columnheader "CPU 最大" [ref=e300]
+        - columnheader "Run Queue 平均" [ref=e301]
+        - columnheader "Run Queue P95" [ref=e302]
+        - columnheader "Run Queue 最大" [ref=e303]
+    - rowgroup [ref=e304]:
+      - row "100 PG12 30.43% 39.46% 83.17% 18.59 27.75 106" [ref=e305]:
+        - cell "100" [ref=e306]
+        - cell "PG12" [ref=e307]
+        - cell "30.43%" [ref=e308]
+        - cell "39.46%" [ref=e309]
+        - cell "83.17%" [ref=e310]
+        - cell "18.59" [ref=e311]
+        - cell "27.75" [ref=e312]
+        - cell "106" [ref=e313]
+      - row "100 YMatrix Heap 41.06% 74.26% 93.89% 25.45 42.65 100" [ref=e314]:
+        - cell "100" [ref=e315]
+        - cell "YMatrix Heap" [ref=e316]
+        - cell "41.06%" [ref=e317]
+        - cell "74.26%" [ref=e318]
+        - cell "93.89%" [ref=e319]
+        - cell "25.45" [ref=e320]
+        - cell "42.65" [ref=e321]
+        - cell "100" [ref=e322]
+      - row "500 PG12 35.34% 53.95% 100.00% 23.17 41.00 472" [ref=e323]:
+        - cell "500" [ref=e324]
+        - cell "PG12" [ref=e325]
+        - cell "35.34%" [ref=e326]
+        - cell "53.95%" [ref=e327]
+        - cell "100.00%" [ref=e328]
+        - cell "23.17" [ref=e329]
+        - cell "41.00" [ref=e330]
+        - cell "472" [ref=e331]
+      - row "500 YMatrix Heap 54.10% 92.27% 99.92% 43.81 141.20 565" [ref=e332]:
+        - cell "500" [ref=e333]
+        - cell "YMatrix Heap" [ref=e334]
+        - cell "54.10%" [ref=e335]
+        - cell "92.27%" [ref=e336]
+        - cell "99.92%" [ref=e337]
+        - cell "43.81" [ref=e338]
+        - cell "141.20" [ref=e339]
+        - cell "565" [ref=e340]
+      - row "1000 PG12 53.19% 77.49% 100.00% 44.74 130.40 883" [ref=e341]:
+        - cell "1000" [ref=e342]
+        - cell "PG12" [ref=e343]
+        - cell "53.19%" [ref=e344]
+        - cell "77.49%" [ref=e345]
+        - cell "100.00%" [ref=e346]
+        - cell "44.74" [ref=e347]
+        - cell "130.40" [ref=e348]
+        - cell "883" [ref=e349]
+      - row "1000 YMatrix Heap 90.01% 99.26% 99.69% 297.08 810.00 992" [ref=e350]:
+        - cell "1000" [ref=e351]
+        - cell "YMatrix Heap" [ref=e352]
+        - cell "90.01%" [ref=e353]
+        - cell "99.26%" [ref=e354]
+        - cell "99.69%" [ref=e355]
+        - cell "297.08" [ref=e356]
+        - cell "810.00" [ref=e357]
+        - cell "992" [ref=e358]
+  - paragraph [ref=e359]: CPU 维度可以看到三个明显特征：
+  - list [ref=e360]:
+    - listitem [ref=e361]: 1. 在 100 terminals 下，YMatrix Heap 的 CPU 平均使用率比 PG12 高约 10.6 个百分点，但 tpmC 略低。
+    - listitem [ref=e362]: 2. 在 500 terminals 下，YMatrix Heap 的 CPU P95 已达到 92.27%，Run Queue P95 达到 141.20，说明调度排队压力已经明显高于 PG12。
+    - listitem [ref=e363]: 3. 在 1000 terminals 下，YMatrix Heap CPU 平均值达到 90.01%，Run Queue 平均值达到 297.08，P95 达到 810.00，系统已处于严重 CPU/调度拥塞状态；PG12 虽然 Run Queue 也升高，但 CPU 平均值仍为 53.19%，吞吐没有塌陷。
+  - paragraph [ref=e364]: 从单位吞吐 CPU 成本看，YMatrix Heap 在 1000 terminals 下的 CPU 使用率与 tpmC 明显失衡。按每 1 万 tpmC 消耗的 CPU 百分点粗略估算，PG12 约为 3.87，YMatrix Heap 约为 20.80，说明 YMatrix Heap 在高并发下花费了更多 CPU，但有效事务吞吐大幅下降。
+  - heading "4.2 内存与 Swap" [level=3] [ref=e365]
+  - table [ref=e367]:
+    - rowgroup [ref=e368]:
+      - row "Terminals 对象 可用内存最低值 Free 最低值 Swap 最大值" [ref=e369]:
+        - columnheader "Terminals" [ref=e370]
+        - columnheader "对象" [ref=e371]
+        - columnheader "可用内存最低值" [ref=e372]
+        - columnheader "Free 最低值" [ref=e373]
+        - columnheader "Swap 最大值" [ref=e374]
+    - rowgroup [ref=e375]:
+      - row "100 PG12 237.00 GB 28.90 GB 0" [ref=e376]:
+        - cell "100" [ref=e377]
+        - cell "PG12" [ref=e378]
+        - cell "237.00 GB" [ref=e379]
+        - cell "28.90 GB" [ref=e380]
+        - cell "0" [ref=e381]
+      - row "100 YMatrix Heap 218.77 GB 103.82 GB 0" [ref=e382]:
+        - cell "100" [ref=e383]
+        - cell "YMatrix Heap" [ref=e384]
+        - cell "218.77 GB" [ref=e385]
+        - cell "103.82 GB" [ref=e386]
+        - cell "0" [ref=e387]
+      - row "500 PG12 222.87 GB 29.08 GB 0" [ref=e388]:
+        - cell "500" [ref=e389]
+        - cell "PG12" [ref=e390]
+        - cell "222.87 GB" [ref=e391]
+        - cell "29.08 GB" [ref=e392]
+        - cell "0" [ref=e393]
+      - row "500 YMatrix Heap 190.49 GB 84.72 GB 0" [ref=e394]:
+        - cell "500" [ref=e395]
+        - cell "YMatrix Heap" [ref=e396]
+        - cell "190.49 GB" [ref=e397]
+        - cell "84.72 GB" [ref=e398]
+        - cell "0" [ref=e399]
+      - row "1000 PG12 203.88 GB 58.48 GB 0" [ref=e400]:
+        - cell "1000" [ref=e401]
+        - cell "PG12" [ref=e402]
+        - cell "203.88 GB" [ref=e403]
+        - cell "58.48 GB" [ref=e404]
+        - cell "0" [ref=e405]
+      - row "1000 YMatrix Heap 168.69 GB 74.66 GB 0" [ref=e406]:
+        - cell "1000" [ref=e407]
+        - cell "YMatrix Heap" [ref=e408]
+        - cell "168.69 GB" [ref=e409]
+        - cell "74.66 GB" [ref=e410]
+        - cell "0" [ref=e411]
+  - paragraph [ref=e412]: 两组测试均未发生 Swap，内存不是本次吞吐差异的直接瓶颈。YMatrix Heap 随并发提升可用内存下降更明显，但仍保留较大余量。1000 terminals 下的主要压力来自 CPU 与调度排队，而不是内存耗尽。
+  - heading "4.3 IO 写入与磁盘利用率" [level=3] [ref=e413]
+  - table [ref=e415]:
+    - rowgroup [ref=e416]:
+      - row "Terminals 对象 读 MB/s 平均 写 MB/s 平均 写 MB/s P95 写 MB/s 最大 磁盘 util 平均 磁盘 util P95 写等待 P95" [ref=e417]:
+        - columnheader "Terminals" [ref=e418]
+        - columnheader "对象" [ref=e419]
+        - columnheader "读 MB/s 平均" [ref=e420]
+        - columnheader "写 MB/s 平均" [ref=e421]
+        - columnheader "写 MB/s P95" [ref=e422]
+        - columnheader "写 MB/s 最大" [ref=e423]
+        - columnheader "磁盘 util 平均" [ref=e424]
+        - columnheader "磁盘 util P95" [ref=e425]
+        - columnheader "写等待 P95" [ref=e426]
+    - rowgroup [ref=e427]:
+      - row "100 PG12 0.01 54.24 86.28 144.08 95.19% 98.00% 0.06 ms" [ref=e428]:
+        - cell "100" [ref=e429]
+        - cell "PG12" [ref=e430]
+        - cell "0.01" [ref=e431]
+        - cell "54.24" [ref=e432]
+        - cell "86.28" [ref=e433]
+        - cell "144.08" [ref=e434]
+        - cell "95.19%" [ref=e435]
+        - cell "98.00%" [ref=e436]
+        - cell "0.06 ms" [ref=e437]
+      - row "100 YMatrix Heap 0.01 133.47 206.50 1045.47 95.42% 98.20% 0.45 ms" [ref=e438]:
+        - cell "100" [ref=e439]
+        - cell "YMatrix Heap" [ref=e440]
+        - cell "0.01" [ref=e441]
+        - cell "133.47" [ref=e442]
+        - cell "206.50" [ref=e443]
+        - cell "1045.47" [ref=e444]
+        - cell "95.42%" [ref=e445]
+        - cell "98.20%" [ref=e446]
+        - cell "0.45 ms" [ref=e447]
+      - row "500 PG12 0.02 75.69 191.01 568.30 91.85% 96.90% 0.12 ms" [ref=e448]:
+        - cell "500" [ref=e449]
+        - cell "PG12" [ref=e450]
+        - cell "0.02" [ref=e451]
+        - cell "75.69" [ref=e452]
+        - cell "191.01" [ref=e453]
+        - cell "568.30" [ref=e454]
+        - cell "91.85%" [ref=e455]
+        - cell "96.90%" [ref=e456]
+        - cell "0.12 ms" [ref=e457]
+      - row "500 YMatrix Heap 0.03 125.02 182.71 249.15 87.76% 96.70% 0.41 ms" [ref=e458]:
+        - cell "500" [ref=e459]
+        - cell "YMatrix Heap" [ref=e460]
+        - cell "0.03" [ref=e461]
+        - cell "125.02" [ref=e462]
+        - cell "182.71" [ref=e463]
+        - cell "249.15" [ref=e464]
+        - cell "87.76%" [ref=e465]
+        - cell "96.70%" [ref=e466]
+        - cell "0.41 ms" [ref=e467]
+      - row "1000 PG12 0.00 69.76 129.40 539.88 87.07% 96.37% 0.20 ms" [ref=e468]:
+        - cell "1000" [ref=e469]
+        - cell "PG12" [ref=e470]
+        - cell "0.00" [ref=e471]
+        - cell "69.76" [ref=e472]
+        - cell "129.40" [ref=e473]
+        - cell "539.88" [ref=e474]
+        - cell "87.07%" [ref=e475]
+        - cell "96.37%" [ref=e476]
+        - cell "0.20 ms" [ref=e477]
+      - row "1000 YMatrix Heap 0.06 29.49 60.05 406.67 26.82% 48.21% 0.49 ms" [ref=e478]:
+        - cell "1000" [ref=e479]
+        - cell "YMatrix Heap" [ref=e480]
+        - cell "0.06" [ref=e481]
+        - cell "29.49" [ref=e482]
+        - cell "60.05" [ref=e483]
+        - cell "406.67" [ref=e484]
+        - cell "26.82%" [ref=e485]
+        - cell "48.21%" [ref=e486]
+        - cell "0.49 ms" [ref=e487]
+  - paragraph [ref=e488]: IO 指标显示，100 和 500 terminals 下 YMatrix Heap 的写入量明显高于 PG12，但吞吐并未超过 PG12，说明其单位有效事务的写入成本更高。1000 terminals 下 YMatrix Heap 写入量反而下降，磁盘 util 平均值也降到 26.82%，这与吞吐明显下降和 CPU/调度拥塞同时出现，说明此时瓶颈已经不在磁盘写满，而是大量时间消耗在 CPU、调度、异常处理或内部竞争路径上。
+  - paragraph [ref=e489]: PG12 三组测试中磁盘 util 都较高，但写等待 P95 很低，且吞吐随并发提高没有退化，说明磁盘忙碌并没有演化成主要阻塞点。
+  - heading "5. 错误日志与结果可信度分析" [level=2] [ref=e490]
+  - heading "5.1 错误日志统计" [level=3] [ref=e491]
+  - table [ref=e493]:
+    - rowgroup [ref=e494]:
+      - row "Terminals PG12 stderr 行数 PG12 错误匹配 YMatrix Heap stderr 行数 YMatrix Heap 错误匹配 YMatrix Heap 重复键错误出现次数" [ref=e495]:
+        - columnheader "Terminals" [ref=e496]
+        - columnheader "PG12 stderr 行数" [ref=e497]
+        - columnheader "PG12 错误匹配" [ref=e498]
+        - columnheader "YMatrix Heap stderr 行数" [ref=e499]
+        - columnheader "YMatrix Heap 错误匹配" [ref=e500]
+        - columnheader "YMatrix Heap 重复键错误出现次数" [ref=e501]
+    - rowgroup [ref=e502]:
+      - row "100 0 0 1,046,416 149,488 74,744" [ref=e503]:
+        - cell "100" [ref=e504]
+        - cell "0" [ref=e505]
+        - cell "0" [ref=e506]
+        - cell "1,046,416" [ref=e507]
+        - cell "149,488" [ref=e508]
+        - cell "74,744" [ref=e509]
+      - row "500 0 0 3,244,304 463,472 231,736" [ref=e510]:
+        - cell "500" [ref=e511]
+        - cell "0" [ref=e512]
+        - cell "0" [ref=e513]
+        - cell "3,244,304" [ref=e514]
+        - cell "463,472" [ref=e515]
+        - cell "231,736" [ref=e516]
+      - row "1000 0 0 1,864,686 266,492 132,488" [ref=e517]:
+        - cell "1000" [ref=e518]
+        - cell "0" [ref=e519]
+        - cell "0" [ref=e520]
+        - cell "1,864,686" [ref=e521]
+        - cell "266,492" [ref=e522]
+        - cell "132,488" [ref=e523]
+  - paragraph [ref=e524]:
+    - text: PG12 三组测试的
+    - code [ref=e525]: runBenchmark.sh.stderr.log
+    - text: 均为空。YMatrix Heap 三组测试虽然最终状态为 success，并且 BenchmarkSQL 输出了 Measured tpmC，但 stderr 中存在大量异常堆栈，主要错误为：
+  - code [ref=e527]: "org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint \"bmsql_oorder_pkey\""
+  - paragraph [ref=e528]: 这些错误意味着 YMatrix Heap 测试过程中存在大量订单主键冲突。由于 TPC-C 的 New Order 事务是 tpmC 的核心指标，重复键错误会直接影响测试语义和结果可信度。当前 Automan 将 runBenchmark 阶段定义为“进程退出 0 且最终 Measured tpmC 存在则保留结果”，因此这些 run 被列为 success；但从正式测试报告角度，应将 YMatrix Heap 的结果标记为“有大量异常，需复核后再作为有效横向对比依据”。
+  - heading "5.2 对结果解释的影响" [level=3] [ref=e529]
+  - paragraph [ref=e530]: 100 和 500 terminals 下，PG12 与 YMatrix Heap 的 tpmC 接近，但 YMatrix Heap 同时伴随大量重复键异常。因此不能简单解读为“两者性能相当”。按工程口径判断：在当前测试条件和当前日志质量下，PG12 给出了无 stderr 错误输出、可复核的结果；YMatrix Heap 虽然最终 tpmC 接近 PG12，但测试过程存在大量事务异常，结果需要重新验证。
+  - paragraph [ref=e531]: 1000 terminals 下，YMatrix Heap 的吞吐明显下降，同时 CPU 与 Run Queue 激增，并继续存在大量重复键异常。该结果更像是系统在异常和高并发压力下进入退化状态，而不是一个稳定的高并发 TPC-C 性能点。
+  - heading "6. perf 采样观察" [level=2] [ref=e532]
+  - heading "6.1 perf 产物状态" [level=3] [ref=e533]
+  - table [ref=e535]:
+    - rowgroup [ref=e536]:
+      - row "Terminals 对象 perf data 文件 perf data 大小 report 文件 备注" [ref=e537]:
+        - columnheader "Terminals" [ref=e538]
+        - columnheader "对象" [ref=e539]
+        - columnheader "perf data 文件" [ref=e540]
+        - columnheader "perf data 大小" [ref=e541]
+        - columnheader "report 文件" [ref=e542]
+        - columnheader "备注" [ref=e543]
+    - rowgroup [ref=e544]:
+      - row "100 PG12 4 197.14 MB 3 采样完整" [ref=e545]:
+        - cell "100" [ref=e546]
+        - cell "PG12" [ref=e547]
+        - cell "4" [ref=e548]
+        - cell "197.14 MB" [ref=e549]
+        - cell "3" [ref=e550]
+        - cell "采样完整" [ref=e551]
+      - row "500 PG12 4 245.41 MB 3 采样完整" [ref=e552]:
+        - cell "500" [ref=e553]
+        - cell "PG12" [ref=e554]
+        - cell "4" [ref=e555]
+        - cell "245.41 MB" [ref=e556]
+        - cell "3" [ref=e557]
+        - cell "采样完整" [ref=e558]
+      - row "1000 PG12 4 331.57 MB 3 采样完整" [ref=e559]:
+        - cell "1000" [ref=e560]
+        - cell "PG12" [ref=e561]
+        - cell "4" [ref=e562]
+        - cell "331.57 MB" [ref=e563]
+        - cell "3" [ref=e564]
+        - cell "采样完整" [ref=e565]
+      - row "100 YMatrix Heap 4 243.17 MB 3 采样完整" [ref=e566]:
+        - cell "100" [ref=e567]
+        - cell "YMatrix Heap" [ref=e568]
+        - cell "4" [ref=e569]
+        - cell "243.17 MB" [ref=e570]
+        - cell "3" [ref=e571]
+        - cell "采样完整" [ref=e572]
+      - row "500 YMatrix Heap 4 375.87 MB 3 采样完整" [ref=e573]:
+        - cell "500" [ref=e574]
+        - cell "YMatrix Heap" [ref=e575]
+        - cell "4" [ref=e576]
+        - cell "375.87 MB" [ref=e577]
+        - cell "3" [ref=e578]
+        - cell "采样完整" [ref=e579]
+      - row "1000 YMatrix Heap 0 0 MB 3 perf.data 被跳过，仅保留 report" [ref=e580]:
+        - cell "1000" [ref=e581]
+        - cell "YMatrix Heap" [ref=e582]
+        - cell "0" [ref=e583]
+        - cell "0 MB" [ref=e584]
+        - cell "3" [ref=e585]
+        - cell "perf.data 被跳过，仅保留 report" [ref=e586]:
+          - code [ref=e587]: perf.data
+          - text: 被跳过，仅保留 report
+  - paragraph [ref=e588]: YMatrix Heap 1000 terminals 的 perf data 被标记为 skipped，仅保留了 perf report 文本。这不会影响对 CPU/IO/日志的整体判断，但会限制后续做更深入火焰图或 perf script 级别分析。
+  - heading "6.2 perf 热点方向" [level=3] [ref=e589]
+  - paragraph [ref=e590]:
+    - text: PG12 的 perf report 顶层热点主要落在 PostgreSQL 的服务端执行路径，例如
+    - code [ref=e591]: PostmasterMain
+    - text: 、
+    - code [ref=e592]: ServerLoop
+    - text: 、
+    - code [ref=e593]: PostgresMain
+    - text: 、
+    - code [ref=e594]: PortalRun
+    - text: 、
+    - code [ref=e595]: ExecutorRun
+    - text: 等路径，符合数据库执行 SQL 事务时的典型表现。
+  - paragraph [ref=e596]:
+    - text: YMatrix Heap 在 100 和 500 terminals 下同样可见 PostgreSQL/YMatrix 服务端主循环和执行路径。到 1000 terminals 时，perf report 顶层出现大量 kernel syscall/write 相关路径，例如
+    - code [ref=e597]: entry_SYSCALL_64_after_hwframe
+    - text: 、
+    - code [ref=e598]: do_syscall_64
+    - text: 、
+    - code [ref=e599]: vfs_write
+    - text: 、
+    - code [ref=e600]: ksys_write
+    - text: 、
+    - code [ref=e601]: new_sync_write
+    - text: 。结合 stderr 中大量异常输出和 CPU/Run Queue 升高，可以判断 1000 terminals 下 YMatrix Heap 的资源消耗已经明显偏离正常事务执行路径，异常处理和写日志/写输出路径可能放大了系统压力。
+  - heading "7. 分项对比结论" [level=2] [ref=e602]
+  - heading "7.1 吞吐" [level=3] [ref=e603]
+  - paragraph [ref=e604]: PG12 在三组并发下均高于 YMatrix Heap。100 和 500 terminals 下领先幅度小，但结果无 stderr 错误输出；1000 terminals 下 PG12 高于对比对象，且没有错误日志。YMatrix Heap 在 1000 terminals 下 tpmC 下降到 43,284.76，说明当前配置和当前测试形态下无法稳定承载该并发压力。
+  - heading "7.2 资源效率" [level=3] [ref=e605]
+  - paragraph [ref=e606]: YMatrix Heap 在 100 和 500 terminals 下使用了更高 CPU 和更多写 IO，但没有获得更高 tpmC。1000 terminals 下 CPU 平均值达到 90.01%，但吞吐只有 PG12 的约 31.46%，资源效率明显下降。
+  - paragraph [ref=e607]: PG12 的资源曲线更平滑：并发提升时 CPU 和 Run Queue 上升，但吞吐没有下降；磁盘 util 虽高，但写等待很低，没有表现出明显 IO 等待瓶颈。
+  - heading "7.3 稳定性和有效性" [level=3] [ref=e608]
+  - paragraph [ref=e609]: PG12 三组测试没有 stderr 输出，结果可直接作为本轮有效数据。YMatrix Heap 三组测试全部存在大量重复键异常，尤其 500 terminals 下 stderr 超过 324 万行，重复键错误出现超过 23 万次。即使 Automan 列为 success，也不建议将这些结果直接作为最终性能结论，应先定位重复键问题并重跑。
+  - heading "8. 风险与限制" [level=2] [ref=e610]
+  - list [ref=e611]:
+    - listitem [ref=e612]: 1. YMatrix Heap 的重复键异常会破坏 TPC-C 测试语义，当前 YMatrix Heap 结果应标记为“异常条件下的观测值”。
+    - listitem [ref=e613]:
+      - text: 2. 两侧数据库实际生效参数不完全一致，尤其
+      - code [ref=e614]: work_mem
+      - text: 、
+      - code [ref=e615]: effective_cache_size
+      - text: 、
+      - code [ref=e616]: maintenance_work_mem
+      - text: 差异较大；本报告反映当前实际部署参数下的观测结果，不构成严格等参数对比。
+    - listitem [ref=e617]:
+      - text: 3. 本报告资源分析聚焦
+      - code [ref=e618]: runBenchmark.sh
+      - text: 阶段，不覆盖建表和装载阶段的完整资源消耗。
+    - listitem [ref=e619]: 4. IO 统计来自数据库主机物理块设备层，未进一步拆分 WAL、数据文件、日志输出等具体写入来源。
+    - listitem [ref=e620]: 5. YMatrix Heap 1000 terminals 的 perf data 未保留，后续深入分析需要重新采样。
+    - listitem [ref=e621]: 6. 本次对比是单次结果对比，没有包含多轮重复测试的方差和置信区间。
+  - heading "9. 建议" [level=2] [ref=e622]
+  - list [ref=e623]:
+    - listitem [ref=e624]:
+      - text: 1. 优先排查 YMatrix Heap 的
+      - code [ref=e625]: bmsql_oorder_pkey
+      - text: 重复键问题，确认是 BenchmarkSQL 事务逻辑、DDL/profile、sequence 初始化、并发事务隔离，还是 YMatrix master-only 执行路径导致。
+    - listitem [ref=e626]: 2. 在修复重复键异常前，不建议将 YMatrix Heap 当前 tpmC 与 PG12 直接作为正式性能结论对外发布。
+    - listitem [ref=e627]:
+      - text: 3. 修复后按相同矩阵重跑 100、500、1000 terminals，并要求
+      - code [ref=e628]: runBenchmark.sh.stderr.log
+      - text: 无 ERROR/Exception 后再进入正式横向对比。
+    - listitem [ref=e629]:
+      - text: 4. 对 1000 terminals 单独增加一次 YMatrix Heap perf 完整采样，保留
+      - code [ref=e630]: perf.data
+      - text: 、
+      - code [ref=e631]: perf script
+      - text: 和
+      - code [ref=e632]: perf report
+      - text: ，用于确认 CPU 消耗是否仍集中在 syscall/write 或异常相关路径。
+    - listitem [ref=e633]: 5. 若后续目标是评估稳定上限，建议增加 600、700、800、900 terminals 梯度，定位 YMatrix Heap 从平台期到塌陷区间的拐点。
+  - heading "10. 结论" [level=2] [ref=e634]
+  - paragraph [ref=e635]:
+    - text: 在本轮
+    - code [ref=e636]: 20260628-224417-tpcc
+    - text: 测试中，基于两侧数据库实际生效参数，PG12 表现为结果无 stderr 错误输出、资源曲线较稳定、并发提升后仍能获得更高吞吐；YMatrix Heap 在 100 和 500 terminals 下最终 tpmC 与 PG12 接近，但资源消耗更高，并且存在大量重复键异常。到 1000 terminals 时，YMatrix Heap 出现吞吐明显下降、CPU 接近接近满载、Run Queue 大幅积压，同时继续伴随大量异常日志。
+  - paragraph [ref=e637]: 因此，本轮可确认的结论为：在当前实际部署参数与当前测试执行结果下，PG12 整体优于 YMatrix Heap，尤其在 1000 terminals 高并发场景下差距较大。YMatrix Heap 当前结果存在大量异常，需要先解决重复键问题，并在明确参数基线后重跑，才能作为严格意义上的有效 TPC-C 横向对比数据。

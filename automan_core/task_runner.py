@@ -7,17 +7,23 @@ from typing import Any
 from automan_core.config import load_yaml
 from automan_core.executor import execute_job
 from automan_core.models import (
+    ApConfig,
     CollectorConfig,
     ConnectionInfo,
     PerfCollectorConfig,
     SystemCollectorConfig,
     Target,
     TpccMatrix,
+    TpchConfig,
+    TsConfig,
 )
+from automan_core.ap import build_ap_run_specs, execute_ap_job, load_ap_config, new_ap_job_id, validate_ap_config, write_ap_job_files
 from automan_core.parameter_commands import build_manual_parameter_commands
 from automan_core.plan import build_run_specs, new_job_id, write_job_files
 from automan_core.profiles import find_profile, load_database_profiles
 from automan_core.sizing import recommend_params
+from automan_core.tpch import build_tpch_run_specs, execute_tpch_job, load_tpch_config, new_tpch_job_id, validate_tpch_config, write_tpch_job_files
+from automan_core.ts import build_ts_run_specs, execute_ts_job, load_ts_config, new_ts_job_id, validate_ts_config, write_ts_job_files
 
 AUTO_PARAMETER_DATABASE_TYPES = {"postgresql", "ymatrix"}
 
@@ -25,12 +31,15 @@ AUTO_PARAMETER_DATABASE_TYPES = {"postgresql", "ymatrix"}
 @dataclass(frozen=True)
 class TaskDefinition:
     benchmark: str
-    matrix: TpccMatrix
+    matrix: TpccMatrix | None
     targets: list[Target]
     collectors: CollectorConfig = field(default_factory=CollectorConfig)
     job_id: str | None = None
     source_path: Path | None = None
     style: str = "legacy"
+    ts_config: TsConfig | None = None
+    ap_config: ApConfig | None = None
+    tpch_config: TpchConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -63,10 +72,31 @@ def load_task_definition(root: Path, task_path: Path) -> TaskDefinition:
 def validate_task_definition(task: TaskDefinition) -> list[ValidationMessage]:
     messages: list[ValidationMessage] = []
 
-    if task.benchmark != "tpcc":
-        messages.append(ValidationMessage("FAIL", "only benchmark: tpcc is supported"))
-    else:
-        messages.append(ValidationMessage("OK", "benchmark: tpcc"))
+    if task.benchmark == "ts":
+        if task.ts_config is None:
+            return [ValidationMessage("FAIL", "benchmark: ts requires TS configuration")]
+        messages.extend(validate_ts_config(task.ts_config, task.targets))
+        messages.extend(_validate_collectors(task.collectors))
+        return messages
+
+    if task.benchmark == "ap":
+        if task.ap_config is None:
+            return [ValidationMessage("FAIL", "benchmark: ap requires AP configuration")]
+        messages.extend(validate_ap_config(task.ap_config, task.targets))
+        messages.extend(_validate_collectors(task.collectors))
+        return messages
+
+    if task.benchmark == "tpch":
+        if task.tpch_config is None:
+            return [ValidationMessage("FAIL", "benchmark: tpch requires TPC-H configuration")]
+        messages.extend(validate_tpch_config(task.tpch_config, task.targets))
+        messages.extend(_validate_collectors(task.collectors))
+        return messages
+
+    if task.benchmark != "tpcc" or task.matrix is None:
+        messages.append(ValidationMessage("FAIL", "benchmark must be one of: tpcc, ts, ap, tpch"))
+        return messages
+    messages.append(ValidationMessage("OK", "benchmark: tpcc"))
 
     if task.matrix.warehouses and all(value > 0 for value in task.matrix.warehouses):
         messages.append(ValidationMessage("OK", f"warehouses: {', '.join(map(str, task.matrix.warehouses))}"))
@@ -127,9 +157,63 @@ def validate_task_definition(task: TaskDefinition) -> list[ValidationMessage]:
 
 
 def run_task_job(root: Path, task_path: Path, plan_only: bool, stage: str | None = None) -> Path:
+    task = load_task_definition(root, task_path)
+
+    if task.benchmark == "ts":
+        if stage not in {None, "ts-write", "ts-query", "point-query"}:
+            raise ValueError("stage must be one of: ts-write, ts-query, point-query")
+        if task.ts_config is None:
+            raise ValueError("benchmark: ts requires TS configuration")
+        if len(task.targets) != 1:
+            raise ValueError("benchmark: ts requires exactly one target")
+        job_id = str(task.job_id or new_ts_job_id())
+        target = task.targets[0]
+        runs = build_ts_run_specs(root, job_id, target, task.ts_config, stage)
+        job_dir = write_ts_job_files(root, job_id, target, task.ts_config, runs, asdict(task.collectors), stage=stage)
+        _print_ts_task_plan(job_dir, target, task.ts_config, runs)
+        if not plan_only:
+            execute_ts_job(root, job_id, target, task.ts_config, runs, task.collectors)
+            _raise_if_job_failed(job_dir)
+            print("[ OK ] job finished")
+            print(f"[HINT] run ./automan list --job {job_dir.name} to inspect completed results")
+        return job_dir
+
+    if task.benchmark == "ap":
+        if stage not in {None, "ap-query"}:
+            raise ValueError("stage must be one of: ap-query")
+        if task.ap_config is None:
+            raise ValueError("benchmark: ap requires AP configuration")
+        job_id = str(task.job_id or new_ap_job_id())
+        runs = build_ap_run_specs(root, job_id, task.targets, task.ap_config, stage)
+        job_dir = write_ap_job_files(root, job_id, task.targets, task.ap_config, runs, asdict(task.collectors), stage=stage)
+        _print_ap_task_plan(job_dir, task.targets, task.ap_config, runs)
+        if not plan_only:
+            execute_ap_job(root, job_id, task.targets, task.ap_config, runs, task.collectors)
+            _raise_if_job_failed(job_dir)
+            print("[ OK ] job finished")
+            print(f"[HINT] run ./automan list -t ap --job {job_dir.name} to inspect completed results")
+        return job_dir
+
+    if task.benchmark == "tpch":
+        if stage not in {None, "tpch-load", "tpch-query"}:
+            raise ValueError("stage must be one of: tpch-load, tpch-query")
+        if task.tpch_config is None:
+            raise ValueError("benchmark: tpch requires TPC-H configuration")
+        job_id = str(task.job_id or new_tpch_job_id())
+        runs = build_tpch_run_specs(root, job_id, task.targets, task.tpch_config, stage)
+        job_dir = write_tpch_job_files(root, job_id, task.targets, task.tpch_config, runs, asdict(task.collectors), stage=stage)
+        _print_tpch_task_plan(job_dir, task.targets, task.tpch_config, runs)
+        if not plan_only:
+            execute_tpch_job(root, job_id, task.targets, task.tpch_config, runs, task.collectors)
+            _raise_if_job_failed(job_dir)
+            print("[ OK ] job finished")
+            print(f"[HINT] run ./automan list -t tpch --job {job_dir.name} to inspect completed results")
+        return job_dir
+
     if stage not in {None, "load", "destroy", "bench"}:
         raise ValueError("stage must be one of: load, destroy, bench")
-    task = load_task_definition(root, task_path)
+    if task.matrix is None:
+        raise ValueError("benchmark: tpcc requires TPC-C matrix")
 
     job_id = str(task.job_id or new_job_id())
     runs = build_run_specs(root, job_id, task.targets, task.matrix)
@@ -175,9 +259,75 @@ def _load_legacy_task(root: Path, task_path: Path, raw: dict[str, Any], profiles
 def _load_inventory_task(root: Path, task_path: Path, raw: dict[str, Any], profiles: dict) -> TaskDefinition:
     all_group = _mapping(raw.get("all"), "all")
     all_vars = dict(all_group.get("vars", {}) or {})
+    benchmark = str(all_vars.get("benchmark", "tpcc"))
     children = _mapping(all_group.get("children"), "all.children")
     bench = _mapping(children.get("bench"), "all.children.bench")
     execution = _load_inventory_execution(bench)
+
+    if benchmark == "ts":
+        targets = []
+        for group_name, child in children.items():
+            if group_name == "bench":
+                continue
+            group = _mapping(child, f"all.children.{group_name}")
+            group_vars = {**all_vars, **dict(group.get("vars", {}) or {})}
+            if "db_type" not in group_vars:
+                continue
+            targets.append(_load_inventory_target(group_name, group, group_vars, profiles, execution, TpccMatrix([1], [1], 1, 1)))
+        return TaskDefinition(
+            benchmark="ts",
+            matrix=None,
+            targets=targets,
+            collectors=_load_collectors(all_vars.get("collectors"), task_path),
+            job_id=all_vars.get("job_id"),
+            source_path=task_path,
+            style="inventory",
+            ts_config=load_ts_config(all_vars),
+        )
+
+    if benchmark == "ap":
+        targets = []
+        dummy_matrix = TpccMatrix([1], [1], 1, 1)
+        for group_name, child in children.items():
+            if group_name == "bench":
+                continue
+            group = _mapping(child, f"all.children.{group_name}")
+            group_vars = {**all_vars, **dict(group.get("vars", {}) or {})}
+            if "db_type" not in group_vars:
+                continue
+            targets.append(_load_inventory_target(group_name, group, group_vars, profiles, execution, dummy_matrix))
+        return TaskDefinition(
+            benchmark="ap",
+            matrix=None,
+            targets=targets,
+            collectors=_load_collectors(all_vars.get("collectors"), task_path),
+            job_id=all_vars.get("job_id"),
+            source_path=task_path,
+            style="inventory",
+            ap_config=load_ap_config(all_vars),
+        )
+
+    if benchmark == "tpch":
+        targets = []
+        dummy_matrix = TpccMatrix([1], [1], 1, 1)
+        for group_name, child in children.items():
+            if group_name == "bench":
+                continue
+            group = _mapping(child, f"all.children.{group_name}")
+            group_vars = {**all_vars, **dict(group.get("vars", {}) or {})}
+            if "db_type" not in group_vars:
+                continue
+            targets.append(_load_inventory_target(group_name, group, group_vars, profiles, execution, dummy_matrix))
+        return TaskDefinition(
+            benchmark="tpch",
+            matrix=None,
+            targets=targets,
+            collectors=_load_collectors(all_vars.get("collectors"), task_path),
+            job_id=all_vars.get("job_id"),
+            source_path=task_path,
+            style="inventory",
+            tpch_config=load_tpch_config(all_vars),
+        )
 
     targets: list[Target] = []
     matrix: TpccMatrix | None = None
@@ -200,7 +350,7 @@ def _load_inventory_task(root: Path, task_path: Path, raw: dict[str, Any], profi
     if matrix is None:
         matrix = _load_inventory_matrix(all_vars)
     return TaskDefinition(
-        benchmark=str(all_vars.get("benchmark", "tpcc")),
+        benchmark=benchmark,
         matrix=matrix,
         targets=targets,
         collectors=_load_collectors(all_vars.get("collectors"), task_path),
@@ -441,6 +591,50 @@ def _print_task_plan(job_dir: Path, targets: list[Target], matrix: TpccMatrix, r
         f"warehouses={','.join(map(str, matrix.warehouses))} "
         f"terminals={','.join(map(str, matrix.terminals))} "
         f"loadWorkers={matrix.load_workers} runMins={matrix.run_mins}"
+    )
+    print(f"[ OK ] total runs: {len(runs)}")
+
+
+def _print_ts_task_plan(job_dir: Path, target: Target, config: TsConfig, runs: list) -> None:
+    print(f"[ OK ] TS job planned: {job_dir}")
+    print(f"[HINT] target {target.id}: {target.profile.display_name}")
+    print(f"[HINT] database {target.connection.db_host}:{target.connection.db_port}/{target.connection.db_name}")
+    print(f"[HINT] kafka {config.kafka.host}: {config.kafka.topic}")
+    print(
+        "[ OK ] TS matrix: "
+        f"compress_threshold={','.join(map(str, config.compress_threshold))} "
+        f"stages={','.join(config.stages)}"
+    )
+    print(f"[ OK ] total runs: {len(runs)}")
+
+
+def _print_ap_task_plan(job_dir: Path, targets: list[Target], config: ApConfig, runs: list) -> None:
+    print(f"[ OK ] AP job planned: {job_dir}")
+    print(f"[ OK ] targets: {len(targets)}")
+    for target in targets:
+        print(f"[HINT] target {target.id}: {target.profile.display_name}")
+        print(f"[HINT] database {target.connection.db_host}:{target.connection.db_port}/{target.connection.db_name}")
+    print(
+        "[ OK ] AP matrix: "
+        f"compress_threshold={','.join(map(str, config.compress_threshold))} "
+        f"stages={','.join(config.stages)} "
+        f"rounds={','.join(map(str, config.query.rounds))}"
+    )
+    print(f"[ OK ] total runs: {len(runs)}")
+
+
+def _print_tpch_task_plan(job_dir: Path, targets: list[Target], config: TpchConfig, runs: list) -> None:
+    print(f"[ OK ] TPC-H job planned: {job_dir}")
+    print(f"[ OK ] targets: {len(targets)}")
+    for target in targets:
+        print(f"[HINT] target {target.id}: {target.profile.display_name}")
+        print(f"[HINT] database {target.connection.db_host}:{target.connection.db_port}/{target.connection.db_name}")
+    print(
+        "[ OK ] TPC-H matrix: "
+        f"compress_threshold={','.join(map(str, config.compress_threshold))} "
+        f"stages={','.join(config.stages)} "
+        f"scale_factors={','.join(map(str, config.scale_factors))} "
+        f"query_streams={','.join(map(str, config.query_streams))}"
     )
     print(f"[ OK ] total runs: {len(runs)}")
 

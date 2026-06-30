@@ -5,9 +5,10 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from automan_core.config import write_json, write_yaml
-from automan_core.list_results import completed_result_rows, show_completed_results
+from automan_core.list_results import completed_result_rows, result_id_map, show_completed_results, stable_result_id
 
 
 class ListResultsTest(unittest.TestCase):
@@ -58,9 +59,10 @@ class ListResultsTest(unittest.TestCase):
             )
 
             rows = completed_result_rows(root, "job1")
+            expected_id = stable_result_id("job1", "job1-pg-w100-c100")
 
             self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0]["id"], "pg-w100-c100")
+            self.assertEqual(rows[0]["id"], expected_id)
             self.assertEqual(rows[0]["terminals"], 100)
             self.assertEqual(rows[0]["tpmc"], 123.45)
 
@@ -71,10 +73,163 @@ class ListResultsTest(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             text = output.getvalue()
             self.assertIn("Finished Results: 1", text)
-            self.assertIn("pg-w100-c100", text)
+            self.assertIn(expected_id, text)
             self.assertIn("123.45", text)
             self.assertIn("456.78", text)
             self.assertNotIn("500", text)
+
+    def test_legacy_tpcc_list_does_not_read_large_result_csv(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            job_dir = root / "runs/jobs/job1"
+            run_dir = root / "runs/job1-pg-w100-c100"
+            result_dir = run_dir / "benchmark/result"
+            (result_dir / "data").mkdir(parents=True)
+            write_yaml(
+                job_dir / "resolved-plan.yaml",
+                {
+                    "job_id": "job1",
+                    "benchmark": "tpcc",
+                    "targets": [{"id": "pg", "connection": {"db_host": "127.0.0.1"}}],
+                    "runs": [
+                        {
+                            "run_id": "job1-pg-w100-c100",
+                            "target_id": "pg",
+                            "warehouse": 100,
+                            "terminals": 100,
+                            "run_mins": 15,
+                            "run_dir": str(run_dir),
+                            "status_path": str(run_dir / "status.json"),
+                            "command_log_dir": str(run_dir / "logs"),
+                            "benchmark_result_dir": str(result_dir),
+                        },
+                    ],
+                },
+            )
+            write_json(run_dir / "status.json", {"run_id": "job1-pg-w100-c100", "status": "success"})
+            (run_dir / "logs").mkdir(parents=True)
+            (run_dir / "logs/runBenchmark.sh.stdout.log").write_text(
+                "Measured tpmC (NewOrders) = 123.45\nMeasured tpmTOTAL = 456.78\n",
+                encoding="utf-8",
+            )
+            (run_dir / "logs/runBenchmark.sh.stderr.log").write_text("large error detail that list must not read\n", encoding="utf-8")
+            (result_dir / "data/tx_summary.csv").write_text("tpmC,123.45\ntpmTOTAL,456.78\n", encoding="utf-8")
+            (result_dir / "data/runInfo.csv").write_text(
+                "run,driver,driverVersion,db,sessionStart,runMins,loadWarehouses,runWarehouses,numSUTThreads,limitTxnsPerMin,thinkTimeMultiplier,keyingTimeMultiplier\n"
+                "1,simple,5.1devel,postgres,2026-06-28 22:49:39.129,15,100,100,100,0,1.0,1.0\n",
+                encoding="utf-8",
+            )
+            (result_dir / "data/result.csv").write_text("large transaction detail that list must not read\n", encoding="utf-8")
+            original_read_text = Path.read_text
+
+            def guarded_read_text(path: Path, *args, **kwargs) -> str:
+                if path.name in {"result.csv", "runBenchmark.sh.stderr.log"}:
+                    raise AssertionError(f"list should not read {path.name}")
+                return original_read_text(path, *args, **kwargs)
+
+            with patch.object(Path, "read_text", guarded_read_text):
+                rows = completed_result_rows(root, "job1")
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["id"], stable_result_id("job1", "job1-pg-w100-c100"))
+            self.assertEqual(rows[0]["tpmc"], 123.45)
+            self.assertEqual(rows[0]["tpmtotal"], 456.78)
+
+    def test_list_type_filter_skips_unrelated_job_before_result_parsing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tpcc_job = root / "runs/jobs/tpcc-job"
+            tpch_job = root / "runs/jobs/tpch-job"
+            tpcc_run = root / "runs/tpcc-job-pg-w100-c100"
+            tpch_run = root / "runs/tpch-job-ymatrix_mars3-ct1200-sf1-q1-m0-tpch-query"
+            tpcc_run.mkdir(parents=True)
+            tpch_run.mkdir(parents=True)
+            write_yaml(
+                tpcc_job / "resolved-plan.yaml",
+                {
+                    "job_id": "tpcc-job",
+                    "benchmark": "tpcc",
+                    "targets": [{"id": "pg", "connection": {"db_host": "127.0.0.1"}}],
+                    "runs": [
+                        {
+                            "run_id": tpcc_run.name,
+                            "target_id": "pg",
+                            "warehouse": 100,
+                            "terminals": 100,
+                            "run_dir": str(tpcc_run),
+                        },
+                    ],
+                },
+            )
+            write_yaml(
+                tpch_job / "resolved-plan.yaml",
+                {
+                    "job_id": "tpch-job",
+                    "benchmark": "tpch",
+                    "targets": [{"id": "ymatrix_mars3", "connection": {"db_host": "127.0.0.2"}}],
+                    "runs": [
+                        {
+                            "run_id": tpch_run.name,
+                            "target_id": "ymatrix_mars3",
+                            "stage": "tpch-query",
+                            "run_dir": str(tpch_run),
+                        },
+                    ],
+                },
+            )
+            write_json(
+                tpch_run / "result.json",
+                {
+                    "run_id": tpch_run.name,
+                    "target_id": "ymatrix_mars3",
+                    "stage": "tpch-query",
+                    "status": "success",
+                    "ddl_profile": "ym-mars3",
+                    "compress_threshold": 1200,
+                    "scale_factor": 1,
+                    "query_streams": 1,
+                    "errors": 0,
+                    "session_end": "2026-06-30 10:00:00",
+                },
+            )
+
+            def fail_unrelated_parse(root: Path, run: dict) -> dict:
+                raise AssertionError(f"unexpected result parse for {run.get('run_id')}")
+
+            with patch("automan_core.list_results._run_result", fail_unrelated_parse):
+                rows = completed_result_rows(root, benchmark_type="tpch")
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["benchmark"], "tpch")
+            self.assertEqual(rows[0]["run"], tpch_run.name)
+
+    def test_hash_result_ids_extend_on_collision(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_minimal_job(root, "job1", ["job1-run-a", "job1-run-b"])
+
+            def fake_hash(run_id: str, length: int = 10) -> str:
+                if length == 10:
+                    return "collision"
+                return ("a" if run_id.endswith("-a") else "b") * length
+
+            with patch("automan_core.list_results._hash_result_id", fake_hash):
+                ids = result_id_map(root)
+
+            self.assertEqual(ids[("job1", "job1-run-a")], "a" * 12)
+            self.assertEqual(ids[("job1", "job1-run-b")], "b" * 12)
+
+    def test_hash_result_ids_include_job_id_when_run_id_is_reused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_minimal_job(root, "job1", ["shared-run"])
+            self._write_minimal_job(root, "job2", ["shared-run"])
+
+            ids = result_id_map(root)
+
+            self.assertIn(("job1", "shared-run"), ids)
+            self.assertIn(("job2", "shared-run"), ids)
+            self.assertNotEqual(ids[("job1", "shared-run")], ids[("job2", "shared-run")])
 
     def test_lists_published_run_result_before_parent_job_finishes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -136,7 +291,7 @@ class ListResultsTest(unittest.TestCase):
 
             self.assertEqual(all_rows, job_rows)
             self.assertEqual(len(job_rows), 1)
-            self.assertEqual(job_rows[0]["id"], "pg-w100-c100")
+            self.assertEqual(job_rows[0]["id"], stable_result_id("job1", "job1-pg-w100-c100"))
             self.assertEqual(job_rows[0]["terminals"], 100)
             self.assertEqual(job_rows[0]["tpmc"], 111.11)
             self.assertEqual(job_rows[0]["tpmtotal"], 222.22)
@@ -264,7 +419,7 @@ class ListResultsTest(unittest.TestCase):
             text = output.getvalue()
             self.assertIn("tpmC", text)
             self.assertIn("tpmTOTAL", text)
-            self.assertIn("pg-w100-c100", text)
+            self.assertIn(stable_result_id("tpcc-job", "tpcc-job-pg-w100-c100"), text)
             self.assertNotIn("ymatrix_mars3-ct1200-ts-write", text)
             self.assertNotIn("Written Rows", text)
 
@@ -351,7 +506,7 @@ class ListResultsTest(unittest.TestCase):
             self.assertIn("Rows", text)
             self.assertIn("Lag", text)
             self.assertIn("MaxLag", text)
-            self.assertIn("ymatrix_mars3-ct1200-ts-write", text)
+            self.assertIn(stable_result_id("ts-job", "ts-job-ymatrix_mars3-ct1200-ts-write"), text)
             self.assertNotIn("Producer Actual QPS", text)
             self.assertNotIn("Written Rows", text)
             self.assertNotIn("Final Lag", text)
@@ -471,6 +626,15 @@ class ListResultsTest(unittest.TestCase):
             self.assertIn("Stage: point-query", text)
             self.assertIn("Sample Size", text)
             self.assertIn("Hit Rate", text)
+
+    def _write_minimal_job(self, root: Path, job_id: str, run_ids: list[str]) -> None:
+        job_dir = root / "runs/jobs" / job_id
+        runs = []
+        for run_id in run_ids:
+            run_dir = root / "runs" / run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
+            runs.append({"run_id": run_id, "target_id": "pg", "run_dir": str(run_dir)})
+        write_yaml(job_dir / "resolved-plan.yaml", {"job_id": job_id, "runs": runs})
 
 
 if __name__ == "__main__":

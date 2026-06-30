@@ -37,7 +37,7 @@ def stage_flags(stage: str) -> dict[str, str]:
             "RUN_DDL": "false",
             "RUN_LOAD": "false",
             "RUN_SQL": "true",
-            "RUN_SINGLE_USER_REPORT": "true",
+            "RUN_SINGLE_USER_REPORT": "false",
             "RUN_MULTI_USER": "false",
             "RUN_MULTI_USER_REPORT": "false",
         }
@@ -91,11 +91,11 @@ def _backend_variables(target: Target, backend: TpchBackendConfig, run: TpchRunS
         "EXT_HOST_DATA_DIR": f"{remote_dir}/ext",
         "ADD_FOREIGN_KEY": "false",
         "CREATE_TBL": "false",
-        "PREHEATING_DATA": _bool_text(backend.preheating_data),
+        "PREHEATING_DATA": _bool_text(backend.preheating_data and run.query_streams > 1),
         "DATABASE_TYPE": backend.database_type,
         "LOAD_DATA_TYPE": backend.load_data_type,
         "TPCH_RUN_ID": _safe_run_id(run.run_id),
-        "TPCH_SESSION_GUCS": backend.session_gucs,
+        "TPCH_SESSION_GUCS": _session_gucs_with_search_path(backend.session_gucs),
         "PURE_SCRIPT_MODE": "",
     }
     variables.update(stage_flags(run.stage))
@@ -231,31 +231,54 @@ def _default_remote_client(target: Target, backend: TpchBackendConfig) -> Remote
 
 def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig, run: TpchRunSpec) -> str:
     variables = _backend_variables(target, backend, run)
-    exports = "; ".join(
-        f"export {name}={shlex.quote(value)}"
-        for name, value in variables.items()
-        if name.startswith("PG")
+    greenplum_setup = _greenplum_setup_command(variables["GREENPLUM_PATH"])
+    child_args = _child_rollout_args(variables)
+    rendered_args = " ".join(_quote_shell_arg(arg) for arg in child_args)
+    gen_data_dir = shlex.quote(variables["GEN_DATA_DIR"])
+    ext_host_data_dir = shlex.quote(variables["EXT_HOST_DATA_DIR"])
+    segment_ext_dirs = _prepare_segment_ext_dirs_command(variables["DATABASE_TYPE"], ext_host_data_dir)
+    wait_for_database = _wait_for_database_command()
+    common_setup = (
+        f"cd {shlex.quote(remote_dir)} && "
+        "set -e; "
+        "set -a && . ./tpch_variables.sh && set +a && "
+        f"{greenplum_setup}; "
+        'if [ -n "${GREENPLUM_PATH:-}" ] && [ -f "${GREENPLUM_PATH}" ]; then source "${GREENPLUM_PATH}"; fi; '
+        'command -v psql >/dev/null; '
+        f"{wait_for_database}; "
+        "chmod +x ./0*/rollout.sh ./01_gen_data/generate_data.sh ./01_gen_data/generate_queries.sh "
+        "./04_load/*.sh 2>/dev/null || true; "
+        f"mkdir -p {gen_data_dir}/log {ext_host_data_dir}; "
+        f"{segment_ext_dirs}; "
     )
-    if variables["GREENPLUM_PATH"]:
-        greenplum_setup = f"export GREENPLUM_PATH={shlex.quote(variables['GREENPLUM_PATH'])}"
+    if run.stage == "tpch-load":
+        stage_command = (
+            f"./00_compile_tpch/rollout.sh {rendered_args}; "
+            f"./01_gen_data/rollout.sh {rendered_args}; "
+            f"./02_init/rollout.sh {rendered_args}; "
+            f"./03_ddl/rollout.sh {rendered_args}; "
+            f"{_serial_mxgate_load_command()}; "
+            f"{_analyze_vacuum_command()}; "
+        )
     else:
-        greenplum_setup = 'source ~/.bashrc >/dev/null 2>&1 || true; if [ -z "${GREENPLUM_PATH:-}" ] && [ -n "${GPHOME:-}" ]; then export GREENPLUM_PATH="${GPHOME}/greenplum_path.sh"; fi'
-    args = [
+        stage_command = (
+            f"./00_compile_tpch/rollout.sh {rendered_args}; "
+            './01_gen_data/generate_queries.sh "$CREATE_TBL"; '
+            f"./05_sql/rollout.sh {rendered_args}; "
+            'test -s "$GEN_DATA_DIR/log/rollout_sql.log"; '
+            'awk -F"|" \'END { exit (NR >= 22 ? 0 : 1) }\' "$GEN_DATA_DIR/log/rollout_sql.log"; '
+        )
+    return f"{common_setup}{{ {stage_command}}}"
+
+
+def _child_rollout_args(variables: dict[str, str]) -> list[str]:
+    return [
         variables["GEN_DATA_SCALE"],
         variables["EXPLAIN_ANALYZE"],
         variables["RANDOM_DISTRIBUTION"],
         variables["MULTI_USER_COUNT"],
-        variables["RUN_COMPILE_TPCH"],
-        variables["RUN_GEN_DATA"],
-        variables["RUN_INIT"],
-        variables["RUN_DDL"],
-        variables["RUN_LOAD"],
-        variables["RUN_SQL"],
-        variables["RUN_SINGLE_USER_REPORT"],
-        variables["RUN_MULTI_USER"],
-        variables["RUN_MULTI_USER_REPORT"],
         variables["SINGLE_USER_ITERATIONS"],
-        variables["GREENPLUM_PATH"],
+        variables["GREENPLUM_PATH"] or "${GREENPLUM_PATH:-}",
         variables["SMALL_STORAGE"],
         variables["MEDIUM_STORAGE"],
         variables["LARGE_STORAGE"],
@@ -263,6 +286,8 @@ def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig
         variables["OPTIMIZER"],
         variables["GEN_DATA_DIR"],
         variables["EXT_HOST_DATA_DIR"],
+        variables["RUN_SQL"],
+        variables["RUN_SINGLE_USER_REPORT"],
         variables["ADD_FOREIGN_KEY"],
         variables["TPCH_RUN_ID"],
         variables["TPCH_SESSION_GUCS"],
@@ -271,25 +296,86 @@ def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig
         variables["LOAD_DATA_TYPE"],
         variables["PURE_SCRIPT_MODE"],
     ]
-    rendered_args = " ".join(shlex.quote(arg) for arg in args)
-    if not variables["GREENPLUM_PATH"]:
-        rendered_args = rendered_args.replace("''", '"${GREENPLUM_PATH:-}"', 1)
-    gen_data_dir = shlex.quote(variables["GEN_DATA_DIR"])
-    ext_host_data_dir = shlex.quote(variables["EXT_HOST_DATA_DIR"])
-    segment_ext_dirs = _prepare_segment_ext_dirs_command(variables["DATABASE_TYPE"], ext_host_data_dir)
-    wait_for_database = _wait_for_database_command()
+
+
+def _greenplum_setup_command(configured_path: str) -> str:
+    if configured_path:
+        return f"export GREENPLUM_PATH={shlex.quote(configured_path)}"
     return (
-        f"{exports}; {greenplum_setup}; "
-        f"cd {shlex.quote(remote_dir)} && "
-        "{ "
-        f"{wait_for_database}; "
-        "chmod +x ./rollout.sh ./0*/rollout.sh ./01_gen_data/generate_data.sh ./01_gen_data/generate_queries.sh "
-        "./04_load/*.sh 2>/dev/null || true; "
-        f"mkdir -p {gen_data_dir}/log {ext_host_data_dir}; "
-        f"{segment_ext_dirs}; "
-        f"./rollout.sh {rendered_args}; "
-        "}"
+        "source ~/.bashrc >/dev/null 2>&1 || true; "
+        'if [ -z "${GREENPLUM_PATH:-}" ] && [ -n "${GPHOME:-}" ]; then '
+        'export GREENPLUM_PATH="${GPHOME}/greenplum_path.sh"; '
+        "fi; "
+        'if [ -z "${GREENPLUM_PATH:-}" ] && [ -f /opt/ymatrix/matrixdb6/greenplum_path.sh ]; then '
+        "export GREENPLUM_PATH=/opt/ymatrix/matrixdb6/greenplum_path.sh; "
+        "fi; "
+        'if [ -z "${GREENPLUM_PATH:-}" ]; then '
+        'found=$(find /opt/ymatrix /usr/local -maxdepth 4 -name greenplum_path.sh 2>/dev/null | head -1); '
+        'if [ -n "$found" ]; then export GREENPLUM_PATH="$found"; fi; '
+        "fi; "
+        'if [ -z "${GREENPLUM_PATH:-}" ] || [ ! -f "${GREENPLUM_PATH}" ]; then '
+        'echo "greenplum_path.sh not found" >&2; exit 1; '
+        "fi"
     )
+
+
+def _quote_shell_arg(value: str) -> str:
+    if value == "${GREENPLUM_PATH:-}":
+        return '"${GREENPLUM_PATH:-}"'
+    return shlex.quote(value)
+
+
+def _serial_mxgate_load_command() -> str:
+    script = r'''
+mkdir -p "$GEN_DATA_DIR/log" "$GEN_DATA_DIR/log/mxgate_serial"
+mxgate_log_dir="$GEN_DATA_DIR/log/mxgate_serial"
+echo "cleanup matrixgate temp schemas"
+psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -Atc "select 'drop schema if exists '||quote_ident(nspname)||' cascade;' from pg_namespace where nspname like '\_matrixgate\_%' escape '\\'" | psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 || true
+echo "truncate tpch tables"
+psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c "truncate tpch.lineitem, tpch.orders, tpch.partsupp, tpch.part, tpch.customer, tpch.supplier, tpch.nation, tpch.region"
+psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -Atc "select row_number() over(order by hostname, datadir), hostname, datadir from gp_segment_configuration where role='p' and content>=0 order by hostname, datadir" > "$mxgate_log_dir/segments.tsv"
+cat "$mxgate_log_dir/segments.tsv"
+mxgate_parallel=$(python3 - <<'PY'
+import os
+print(os.cpu_count() or 8)
+PY
+)
+while IFS='|' read -r idx host datadir; do
+  gen_path="$datadir/pivotalguru"
+  seglog="$mxgate_log_dir/segment_${idx}_${host}.log"
+  echo "START idx=$idx host=$host path=$gen_path"
+  ssh -n -o StrictHostKeyChecking=no "$host" \
+    "bash -lc 'source \"${GREENPLUM_PATH:-$GPHOME/greenplum_path.sh}\" >/dev/null 2>&1 || true; set -euo pipefail; GEN_PATH=\"$gen_path\"; for f in \"\$GEN_PATH\"/*.tbl*; do base=\$(basename \"\$f\"); table=\${base%%.tbl*}; echo LOAD \$table \$f; mxgate --source stdin --format csv --db-database \"$PGDATABASE\" --db-master-host \"$PGHOST\" --db-master-port \"$PGPORT\" --db-user \"$PGUSER\" --db-password \"$PGPASSWORD\" --time-format raw --delimiter \"|\" --target tpch.\$table --stream-prepared 0 --parallel \"$mxgate_parallel\" < \"\$f\" > \"\$GEN_PATH/automan.mxgate.\$table.log\" 2>&1; grep -E \"REPORT|ERROR|FATAL|Failed|failed|panic\" \"\$GEN_PATH/automan.mxgate.\$table.log\" | tail -10 || true; done'" \
+    > "$seglog" 2>&1
+  tail -20 "$seglog"
+done < "$mxgate_log_dir/segments.tsv"
+load_log="$GEN_DATA_DIR/log/rollout_load.log"
+: > "$load_log"
+for row in 051:region 052:nation 053:customer 054:part 055:supplier 056:partsupp 057:orders 058:lineitem; do
+  id="${row%%:*}"
+  table="${row#*:}"
+  tuples=$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -Atqc "select count(*) from tpch.$table")
+  if [ "$tuples" = "0" ]; then
+    echo "tpch.$table loaded zero rows" >&2
+    exit 1
+  fi
+  printf '%s|tpch.%s|%s|00:00:00.000\n' "$id" "$table" "$tuples" >> "$load_log"
+done
+touch "$GEN_DATA_DIR/log/end_load.log"
+'''
+    return f"bash -lc {shlex.quote(script)}"
+
+
+def _analyze_vacuum_command() -> str:
+    script = r'''
+for table in region nation customer supplier part partsupp orders lineitem; do
+  echo "analyze vacuum tpch.$table"
+  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -q -AXtc "analyze fullscan tpch.$table;"
+  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -q -AXtc "vacuum full tpch.$table;"
+  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -q -AXtc "vacuum tpch.$table;"
+done
+'''
+    return f"bash -lc {shlex.quote(script)}"
 
 
 def _normalize_remote_scripts_command() -> str:
@@ -448,6 +534,16 @@ def _safe_int(value: str) -> int:
 
 def _bool_text(value: bool) -> str:
     return "true" if value else "false"
+
+
+def _session_gucs_with_search_path(session_gucs: str) -> str:
+    value = session_gucs.strip()
+    if "search_path" in value.lower():
+        return value
+    if not value:
+        return "set search_path to tpch;"
+    separator = "" if value.endswith(";") else ";"
+    return f"set search_path to tpch; {value}{separator}"
 
 
 def _safe_run_id(run_id: str) -> str:

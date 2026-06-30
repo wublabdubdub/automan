@@ -54,6 +54,7 @@ RESULT_PATTERNS = {
 }
 
 TEXT_ARTIFACT_SUFFIXES = {".csv", ".err", ".json", ".jsonl", ".log", ".md", ".out", ".report", ".script", ".txt"}
+MAX_METRIC_TEXT_BYTES = 1024 * 1024
 
 
 def generate_report(root: Path, job_id: str) -> Path:
@@ -509,7 +510,7 @@ def _load_table_size(root: Path, run: dict[str, Any]) -> dict[str, Any] | None:
 
 def _merge_result_text_sources(root: Path, run: dict[str, Any], result: dict[str, Any]) -> None:
     for path in _benchmark_text_sources(root, run):
-        text = _read_text(path)
+        text = _read_metric_text(path)
         if text is None:
             continue
         matched = False
@@ -577,10 +578,14 @@ def _benchmark_text_sources(root: Path, run: dict[str, Any]) -> list[Path]:
     paths: list[Path] = []
     log_dir = _path_value(root, run, "command_log_dir", "logs")
     if log_dir.exists():
-        paths.extend(sorted(log_dir.glob("*.log")))
+        benchmark_log = log_dir / "runBenchmark.sh.stdout.log"
+        if benchmark_log.exists():
+            paths.append(benchmark_log)
+        else:
+            paths.extend(sorted(log_dir.glob("*Benchmark*.stdout.log")))
     result_dir = _path_value(root, run, "benchmark_result_dir", "benchmark/result")
     if result_dir.exists():
-        paths.extend(path for path in sorted(result_dir.rglob("*")) if path.is_file() and _is_text_artifact(path))
+        paths.extend(path for path in sorted(result_dir.rglob("*")) if path.is_file() and _is_metric_text_artifact(path))
     return list(dict.fromkeys(paths))
 
 
@@ -748,6 +753,10 @@ def _is_text_artifact(path: Path) -> bool:
     return path.suffix.lower() in TEXT_ARTIFACT_SUFFIXES or path.name.endswith((".script.txt", ".report.txt"))
 
 
+def _is_metric_text_artifact(path: Path) -> bool:
+    return path.suffix.lower() != ".csv" and _is_text_artifact(path)
+
+
 def _is_perf_artifact(path: Path) -> bool:
     parts = {part.lower() for part in path.parts}
     return "perf" in parts or path.name.lower().startswith("perf.")
@@ -806,6 +815,18 @@ def _parse_datetime(value: str) -> datetime | None:
 def _read_text(path: Path) -> str | None:
     try:
         return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _read_metric_text(path: Path) -> str | None:
+    try:
+        size = path.stat().st_size
+        if size <= MAX_METRIC_TEXT_BYTES:
+            return path.read_text(encoding="utf-8", errors="replace")
+        with path.open("rb") as f:
+            f.seek(-MAX_METRIC_TEXT_BYTES, 2)
+            return f.read().decode("utf-8", errors="replace")
     except OSError:
         return None
 

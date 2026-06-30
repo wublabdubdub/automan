@@ -1,0 +1,42 @@
+# AP inventory base. Compose targets with:
+#   ./configure -t ap -c ym-mars3 -o automan.yml
+all:
+  vars:
+    benchmark: ap
+    job_id:
+
+    ap_stages: [ap-query]
+    compress_threshold: [1200, 4096, 8192, 32768]
+
+    ap_query:
+      source_table: iot_vehicle_raw
+      rounds: [3]
+      warmup_rounds: [1]
+      timeout_seconds: 7200
+      query_set: vehicle_ap_basic
+
+    collectors:
+      enabled: true
+      system:
+        enabled: true
+        interval_seconds: 1
+        host_roles: [database]
+        tools: [vmstat, iostat, pidstat, mpstat]
+      perf:
+        enabled: false
+        phases: [ap-query]
+        host_roles: [database]
+        frequency: 99
+        call_graph: fp
+        record_scope: system
+
+  children:
+    bench:
+      hosts:
+        bench01:
+          ansible_host: 172.16.100.143
+          ansible_port: 22
+          ansible_user: root
+          ansible_password: ""
+          ansible_connection: local
+          automan_workdir: /root/automan

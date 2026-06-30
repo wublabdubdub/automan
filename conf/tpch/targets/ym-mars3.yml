@@ -10,7 +10,7 @@ all:
 
         db_host: 172.16.100.62
         db_port: 5433
-        db_name: tpcc
+        db_name: tpch
         db_user: zhangchen
         db_password: "YMatrix@123"
 

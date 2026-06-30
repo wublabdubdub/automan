@@ -24,10 +24,10 @@ all:
         access_method: mars3
         load_data_type: mxgate
         optimizer: "off"
-        preheating_data: true
+        preheating_data: false
         explain_analyze: false
         greenplum_path: ""
-        session_gucs: "set statement_mem to '1GB';"
+        session_gucs: "set search_path to tpch; set statement_mem to '1GB';"
       data_prepare:
         mode: auto
         generator: dbgen
