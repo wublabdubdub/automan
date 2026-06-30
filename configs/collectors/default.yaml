@@ -7,22 +7,15 @@ collectors:
   system:
     enabled: true
     interval_seconds: 1
-    host_roles:
-      - database
-    tools:
-      - vmstat
-      - iostat
-      - pidstat
-      - mpstat
+    host_roles: [database]
+    tools: [vmstat, iostat, pidstat, mpstat]
 
   # perf uses `perf record`, not flame graphs or perf stat.
   # The default samples runBenchmark.sh at 99 Hz in three short windows.
   perf:
     enabled: true
-    phases:
-      - runBenchmark.sh
-    host_roles:
-      - database
+    phases: [runBenchmark.sh]
+    host_roles: [database]
     frequency: 99
     call_graph: fp
     record_scope: system
