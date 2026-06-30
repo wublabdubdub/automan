@@ -181,7 +181,13 @@ class YMatrixTpchBackend:
             ended = datetime.now().isoformat()
             return _failed_backend_result(run, remote_dir, artifact_dir, started, ended, _command_error(upload) or "remote backend upload failed")
 
-        extract = client.run(f"cd {shlex.quote(remote_dir)} && tar -xzf ymatrix-tpch.tar.gz && rm -f ymatrix-tpch.tar.gz", timeout=600)
+        extract = client.run(
+            f"cd {shlex.quote(remote_dir)} && "
+            "tar -xzf ymatrix-tpch.tar.gz && "
+            "rm -f ymatrix-tpch.tar.gz && "
+            f"{_normalize_remote_scripts_command()}",
+            timeout=600,
+        )
         _write_command(run.logs_dir, "ymatrix-backend-extract", extract)
         if extract.exit_code != 0:
             ended = datetime.now().isoformat()
@@ -189,7 +195,7 @@ class YMatrixTpchBackend:
 
         variables = render_backend_variables(target, backend, run)
         local_variables = run.logs_dir / "tpch_variables.sh"
-        local_variables.write_text(variables, encoding="utf-8")
+        _write_text_lf(local_variables, variables)
         upload_vars = client.upload_file(local_variables, f"{remote_dir}/tpch_variables.sh")
         _write_command(run.logs_dir, "ymatrix-backend-upload-vars", upload_vars)
         if upload_vars.exit_code != 0:
@@ -278,6 +284,18 @@ def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig
     )
 
 
+def _normalize_remote_scripts_command() -> str:
+    patterns = " ".join(
+        [
+            "-name '*.sh'",
+            "-o -name 'Makefile'",
+            "-o -name 'makefile'",
+            "-o -name 'GNUmakefile'",
+        ]
+    )
+    return f"find . -type f \\( {patterns} \\) -exec sed -i 's/\\r$//' {{}} +"
+
+
 def _failed_backend_result(run: TpchRunSpec, remote_dir: str, artifact_dir: Path, started: str, ended: str, error: str) -> dict[str, Any]:
     return {
         "run_id": run.run_id,
@@ -307,6 +325,12 @@ def _write_command(logs_dir: Path, name: str, result: CommandResult) -> None:
     (logs_dir / f"{safe}.cmd").write_text(result.command, encoding="utf-8")
     (logs_dir / f"{safe}.stdout").write_text(result.stdout, encoding="utf-8")
     (logs_dir / f"{safe}.stderr").write_text(result.stderr, encoding="utf-8")
+
+
+def _write_text_lf(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
 
 
 def _write_source_archive(source_dir: Path, archive: Path) -> None:
