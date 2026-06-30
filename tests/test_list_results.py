@@ -7,8 +7,10 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from automan_core.config import write_json, write_yaml
+from automan_core.config import load_yaml, write_json, write_yaml
 from automan_core.list_results import completed_result_rows, result_id_map, show_completed_results, stable_result_id
+from automan_core.models import ConnectionInfo, DatabaseProfile, Target
+from automan_core.ssh import CommandResult
 
 
 class ListResultsTest(unittest.TestCase):
@@ -627,6 +629,65 @@ class ListResultsTest(unittest.TestCase):
             self.assertIn("Sample Size", text)
             self.assertIn("Hit Rate", text)
 
+    def test_ts_refresh_size_queries_live_database_and_updates_cached_result(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            job_dir = root / "runs/jobs/ts-job"
+            run_dir = root / "runs/ts-job-ymatrix_mars3-ct1200-ts-write"
+            run_dir.mkdir(parents=True)
+            write_yaml(
+                job_dir / "resolved-plan.yaml",
+                {
+                    "job_id": "ts-job",
+                    "benchmark": "ts",
+                    "targets": [{"id": "ymatrix_mars3", "connection": {"db_host": "127.0.0.2"}}],
+                    "runs": [
+                        {
+                            "run_id": run_dir.name,
+                            "target_id": "ymatrix_mars3",
+                            "stage": "ts-write",
+                            "run_dir": str(run_dir),
+                        },
+                    ],
+                },
+            )
+            write_json(
+                run_dir / "result.json",
+                {
+                    "run_id": run_dir.name,
+                    "target_id": "ymatrix_mars3",
+                    "stage": "ts-write",
+                    "status": "success",
+                    "target_table": "iot_vehicle_raw_ct1200",
+                    "compress_threshold": 1200,
+                    "table_data_size": "289 MB",
+                    "duration_seconds": 180,
+                    "pressure_level": "high",
+                    "actual_qps": 223829.12,
+                    "written_rows": 36000000,
+                    "final_lag": 0,
+                    "max_lag": 9399237,
+                    "session_end": "2026-06-29T17:50:25",
+                },
+            )
+            commands = []
+
+            def fake_runner(command, cwd, timeout, env):
+                commands.append((command, cwd, timeout, env))
+                return CommandResult("psql", 0, "177 MB\n", "")
+
+            with patch("automan_core.list_results._load_refresh_targets", return_value={"ymatrix_mars3": _fake_ts_target()}):
+                rows = completed_result_rows(root, "ts-job", benchmark_type="ts", refresh_size=True, runner=fake_runner)
+
+            self.assertEqual(rows[0]["table_data_size"], "177 MB")
+            self.assertIn("pg_partition_tree", commands[0][0][-1])
+            self.assertIn("iot_vehicle_raw_ct1200", commands[0][0][-1])
+            self.assertEqual(commands[0][3]["PGPASSWORD"], "secret")
+            stored = load_yaml(run_dir / "result.json")
+            self.assertEqual(stored["table_data_size"], "177 MB")
+            table_size = load_yaml(run_dir / "database" / "table-size.json")
+            self.assertEqual(table_size["table_data_size"], "177 MB")
+
     def _write_minimal_job(self, root: Path, job_id: str, run_ids: list[str]) -> None:
         job_dir = root / "runs/jobs" / job_id
         runs = []
@@ -635,6 +696,38 @@ class ListResultsTest(unittest.TestCase):
             run_dir.mkdir(parents=True, exist_ok=True)
             runs.append({"run_id": run_id, "target_id": "pg", "run_dir": str(run_dir)})
         write_yaml(job_dir / "resolved-plan.yaml", {"job_id": job_id, "runs": runs})
+
+
+def _fake_ts_target() -> Target:
+    return Target(
+        profile=DatabaseProfile(
+            id="ymatrix_mars3_master_only",
+            display_name="YMatrix mars3 master only",
+            database_type="ymatrix",
+            storage_engine="mars3",
+            test_mode="master_only",
+            ddl_profile="ymatrix_mars3_master_only",
+            ddl_dir="benchmarks/tpcc/benchmarksql/ddl/ymatrix_mars3_master_only",
+            requires_ddl_confirmation=True,
+        ),
+        connection=ConnectionInfo(
+            ssh_host="127.0.0.2",
+            ssh_port=22,
+            ssh_user="mxadmin",
+            ssh_password="secret",
+            remote_workdir="/tmp",
+            db_host="127.0.0.2",
+            db_port=5433,
+            db_name="tpch",
+            db_user="mxadmin",
+            db_password="secret",
+        ),
+        recommended_params={},
+        accepted_params={},
+        apply_params=False,
+        host_facts={},
+        target_id="ymatrix_mars3",
+    )
 
 
 if __name__ == "__main__":

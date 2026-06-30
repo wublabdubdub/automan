@@ -2,18 +2,35 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from automan_core.config import load_yaml
+from automan_core.config import load_yaml, write_json
+from automan_core.models import Target, TsRunSpec
 from automan_core.result_summary import load_published_run_result
 from automan_core.report import _run_result, find_job_dir, find_job_dirs
+from automan_core.ssh import CommandResult
+from automan_core.task_runner import load_task_definition
+from automan_core.ts import _run_local, _table_data_size
 
 RESULT_ID_MIN_LENGTH = 10
 RESULT_ID_MAX_LENGTH = 40
 
 
-def show_completed_results(root: Path, job_id: str | None = None, benchmark_type: str = "tpcc") -> int:
-    rows = completed_result_rows(root, job_id, benchmark_type)
+Runner = Callable[[list[str], Path, int, dict[str, str] | None], CommandResult]
+
+
+def show_completed_results(
+    root: Path,
+    job_id: str | None = None,
+    benchmark_type: str = "tpcc",
+    refresh_size: bool = False,
+    inventory_path: Path | None = None,
+) -> int:
+    try:
+        rows = completed_result_rows(root, job_id, benchmark_type, refresh_size=refresh_size, inventory_path=inventory_path)
+    except ValueError as exc:
+        print(f"[FAIL] {exc}")
+        return 1
     if job_id:
         print(f"Job: {job_id}")
         print(f"Finished Results: {len(rows)}")
@@ -25,8 +42,17 @@ def show_completed_results(root: Path, job_id: str | None = None, benchmark_type
     return 0
 
 
-def completed_result_rows(root: Path, job_id: str | None = None, benchmark_type: str = "tpcc") -> list[dict[str, Any]]:
+def completed_result_rows(
+    root: Path,
+    job_id: str | None = None,
+    benchmark_type: str = "tpcc",
+    refresh_size: bool = False,
+    inventory_path: Path | None = None,
+    runner: Runner | None = None,
+) -> list[dict[str, Any]]:
     benchmark_type = benchmark_type.lower()
+    refresh_targets = _load_refresh_targets(root, inventory_path) if refresh_size and benchmark_type == "ts" else {}
+    refresh_runner = runner or _run_local
     job_dirs = [find_job_dir(root, job_id)] if job_id else find_job_dirs(root)
     ids_by_run = result_id_map(root)
     rows: list[dict[str, Any]] = []
@@ -49,6 +75,8 @@ def completed_result_rows(root: Path, job_id: str | None = None, benchmark_type:
             if result_type != benchmark_type:
                 continue
             if result_type == "ts":
+                if refresh_size:
+                    _refresh_ts_table_size(root, run, result, refresh_targets, refresh_runner)
                 rows.append(_ts_row(job_name, run_id, result_id, result, target))
                 continue
             if result_type == "ap":
@@ -325,6 +353,86 @@ def _target_map(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
             "db_host": connection.get("db_host", "-"),
         }
     return targets
+
+
+def _load_refresh_targets(root: Path, inventory_path: Path | None) -> dict[str, Target]:
+    path = inventory_path or root / "automan.yml"
+    if not path.exists():
+        raise ValueError(f"--refresh-size requires an inventory with real DB credentials: missing {path}")
+    try:
+        task = load_task_definition(root, path)
+    except Exception as exc:
+        raise ValueError(f"--refresh-size could not load inventory {path}: {exc}") from exc
+    targets = {target.id: target for target in task.targets}
+    if not targets:
+        raise ValueError(f"--refresh-size inventory has no benchmark targets: {path}")
+    return targets
+
+
+def _refresh_ts_table_size(
+    root: Path,
+    run: dict[str, Any],
+    result: dict[str, Any],
+    targets: dict[str, Target],
+    runner: Runner,
+) -> None:
+    target_id = str(result.get("target_id") or run.get("target_id") or "")
+    target = targets.get(target_id)
+    table = result.get("target_table")
+    run_dir = _path_for_run(root, run, result)
+    if target is None or not table or run_dir is None:
+        result["size_refresh_error"] = "missing target, target_table, or run_dir"
+        return
+    spec = TsRunSpec(
+        run_id=str(result.get("run_id") or run.get("run_id") or run_dir.name),
+        target_id=target_id,
+        stage=str(result.get("stage") or run.get("stage") or "ts-write"),
+        compress_threshold=_int_or_zero(result.get("compress_threshold") or run.get("compress_threshold")),
+        target_table=str(table),
+        kafka_topic=str(result.get("kafka_topic") or ""),
+        work_dir=root / "work" / "list-refresh" / run_dir.name,
+        run_dir=run_dir,
+        benchmark_dir=run_dir / "benchmark" / str(result.get("stage") or run.get("stage") or ""),
+        database_dir=run_dir / "database",
+        logs_dir=run_dir / "logs",
+        collector_dir=run_dir / "collectors",
+    )
+    size = _table_data_size(target, spec, runner)
+    if size.get("error") or size.get("table_data_size") is None:
+        result["size_refresh_error"] = size.get("error") or "table size query returned no size"
+        return
+    result["table_data_size"] = size.get("table_data_size")
+    result["table_data_size_bytes"] = size.get("table_data_size_bytes")
+    spec.database_dir.mkdir(parents=True, exist_ok=True)
+    write_json(spec.database_dir / "table-size.json", size)
+    result_path = run_dir / "result.json"
+    if result_path.exists():
+        try:
+            stored = load_yaml(result_path)
+        except (OSError, ValueError):
+            stored = None
+        if isinstance(stored, dict):
+            stored["table_data_size"] = result.get("table_data_size")
+            stored["table_data_size_bytes"] = result.get("table_data_size_bytes")
+            write_json(result_path, stored)
+
+
+def _path_for_run(root: Path, run: dict[str, Any], result: dict[str, Any]) -> Path | None:
+    raw = run.get("run_dir") or result.get("run_dir")
+    if not raw:
+        run_id = result.get("run_id") or run.get("run_id")
+        if not run_id:
+            return None
+        return root / "runs" / str(run_id)
+    path = Path(str(raw))
+    return path if path.is_absolute() else root / path
+
+
+def _int_or_zero(value: Any) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return 0
 
 
 def _print_rows(rows: list[dict[str, Any]], detailed: bool) -> None:

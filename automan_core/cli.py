@@ -101,6 +101,8 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser = subparsers.add_parser("list", help="list completed benchmark results")
     list_parser.add_argument("-t", "--type", choices=CONFIG_TYPES, default="tpcc", help="benchmark type to list")
     list_parser.add_argument("--job", help="only list completed results for this job")
+    list_parser.add_argument("-i", "--inventory", help="inventory/config YAML path used by --refresh-size; defaults to automan.yml")
+    list_parser.add_argument("--refresh-size", action="store_true", help="refresh TS table sizes from the live database before listing")
 
     delete_parser = subparsers.add_parser("delete", help="delete one or more benchmark results by ID")
     delete_parser.add_argument("ids", nargs="+", help="result ID(s) shown by list, or full run ID(s)")
@@ -167,7 +169,13 @@ def main() -> None:
             raise SystemExit(1) from exc
         print_status("OK", f"report: {report_path}")
     elif args.command == "list":
-        failures = show_completed_results(root=root, job_id=args.job, benchmark_type=args.type)
+        failures = show_completed_results(
+            root=root,
+            job_id=args.job,
+            benchmark_type=args.type,
+            refresh_size=args.refresh_size,
+            inventory_path=Path(args.inventory) if args.inventory else None,
+        )
         if failures:
             raise SystemExit(failures)
     elif args.command == "delete":

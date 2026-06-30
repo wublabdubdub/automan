@@ -13,6 +13,19 @@ from automan_core.config import write_yaml
 
 
 class CliContractTest(unittest.TestCase):
+    def test_list_passes_refresh_size_inventory_to_result_listing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inventory = root / "automan.yml"
+            inventory.write_text("all: {}\n", encoding="utf-8")
+
+            with patch.object(cli.Path, "cwd", return_value=root):
+                with patch("sys.argv", ["automan", "list", "-t", "ts", "-i", str(inventory), "--refresh-size"]):
+                    with patch("automan_core.cli.show_completed_results", return_value=0) as show:
+                        cli.main()
+
+        show.assert_called_once_with(root=root, job_id=None, benchmark_type="ts", refresh_size=True, inventory_path=inventory)
+
     def test_validate_prints_pigsty_style_status_tags(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as tmp:
