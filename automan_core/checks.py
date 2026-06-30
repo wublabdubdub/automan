@@ -11,6 +11,8 @@ import paramiko
 
 from automan_core.models import CollectorConfig, Target
 from automan_core.ssh import CommandResult, SSHClient
+from automan_core.tpch import tpch_data_status, tpch_ddl_profile
+from automan_core.tpch_backend import remote_backend_dir
 
 if TYPE_CHECKING:
     from automan_core.task_runner import TaskDefinition
@@ -46,8 +48,189 @@ def check_task_readiness(
     results: list[CheckResult] = []
     for target in task.targets:
         results.extend(check_database_connectivity(root, target, local_runner=local_runner))
+    if task.benchmark == "ts" and task.ts_config is not None:
+        for target in task.targets:
+            results.extend(check_mxgate_readiness(target, task.ts_config.mxgate))
+    if task.benchmark == "ap" and task.ap_config is not None:
+        results.extend(check_ap_readiness(root, task.ap_config))
+    if task.benchmark == "tpch" and task.tpch_config is not None:
+        results.extend(check_tpch_readiness(root, task, ssh_runner_factory=ssh_runner_factory))
     results.extend(check_collector_readiness(root, task.targets, task.collectors, local_runner, ssh_runner_factory, sftp_fetcher))
     return results
+
+
+def check_ap_readiness(root: Path, config) -> list[CheckResult]:
+    query_dir = root / "benchmarks" / "ap" / "queries" / config.query.query_set
+    if not query_dir.exists():
+        return [CheckResult("FAIL", f"AP query directory not found: {query_dir}")]
+    files = sorted(path for path in query_dir.glob("*.sql") if path.is_file())
+    if not files:
+        return [CheckResult("FAIL", f"AP query directory has no .sql files: {query_dir}")]
+    return [CheckResult("OK", f"AP query set ready: {config.query.query_set} ({len(files)} SQL file(s))")]
+
+
+def check_tpch_readiness(root: Path, task: TaskDefinition, ssh_runner_factory: SSHRunnerFactory | None = None) -> list[CheckResult]:
+    config = task.tpch_config
+    if config is None:
+        return [CheckResult("FAIL", "TPC-H configuration is missing")]
+    if config.backend.type == "ymatrix-tpch":
+        return _check_ymatrix_tpch_backend(root, task, ssh_runner_factory)
+    results: list[CheckResult] = []
+    stages = set(config.stages)
+    if "tpch-load" in stages:
+        schema_root = _resolve_root_path(root, config.schema_dir)
+        for target in task.targets:
+            profile = tpch_ddl_profile(target)
+            schema_file = schema_root / profile / "schema.sql"
+            if schema_file.exists():
+                results.append(CheckResult("OK", f"{target.id}: TPC-H schema ready: {schema_file}"))
+            else:
+                results.append(CheckResult("FAIL", f"{target.id}: TPC-H schema file not found: {schema_file}"))
+        for scale_factor in config.scale_factors:
+            results.extend(_check_tpch_data(root, config, scale_factor))
+    if "tpch-query" in stages:
+        query_dir = _resolve_root_path(root, config.query_dir) / config.query_set
+        if not query_dir.exists():
+            results.append(CheckResult("FAIL", f"TPC-H query directory not found: {query_dir}"))
+        else:
+            files = sorted(path for path in query_dir.glob("*.sql") if path.is_file())
+            if files:
+                results.append(CheckResult("OK", f"TPC-H query set ready: {config.query_set} ({len(files)} SQL file(s))"))
+            else:
+                results.append(CheckResult("FAIL", f"TPC-H query directory has no .sql files: {query_dir}"))
+    return results
+
+
+def _check_ymatrix_tpch_backend(root: Path, task: TaskDefinition, ssh_runner_factory: SSHRunnerFactory | None) -> list[CheckResult]:
+    config = task.tpch_config
+    if config is None:
+        return [CheckResult("FAIL", "TPC-H configuration is missing")]
+    results: list[CheckResult] = []
+    source_dir = _resolve_root_path(root, config.backend.source_dir)
+    if (source_dir / "tpch.sh").exists() and (source_dir / "rollout.sh").exists():
+        results.append(CheckResult("OK", f"TPC-H YMatrix backend source ready: {source_dir}"))
+    else:
+        results.append(CheckResult("FAIL", f"TPC-H YMatrix backend source not found or incomplete: {source_dir}"))
+
+    for target in task.targets:
+        label = f"{target.id}@{target.connection.db_host}"
+        runner = _tpch_backend_ssh_runner(target, ssh_runner_factory)
+        results.extend(check_ssh_workspace(target.connection.remote_workdir, label, runner))
+        for tool in ["psql", "make", "gcc", "ssh", "scp"]:
+            results.append(check_ssh_command(tool, label, runner))
+        results.append(_check_remote_psql(target, label, runner, "select 1;", "database connectivity ok"))
+        if config.backend.database_type == "matrixdb" and config.backend.load_data_type == "mxgate":
+            results.append(
+                _check_remote_psql(
+                    target,
+                    label,
+                    runner,
+                    "select count(*) from gp_segment_configuration;",
+                    "MatrixDB segment metadata query ok",
+                )
+            )
+        for scale_factor in config.scale_factors:
+            fake_run = _fake_tpch_run_for_check(root, target.id, scale_factor, config)
+            results.append(CheckResult("HINT", f"{label}: backend will run on db_host in {remote_backend_dir(target, config.backend, fake_run)}"))
+    return results
+
+
+def _check_remote_psql(target: Target, label: str, runner: SSHRunner, sql: str, success: str) -> CheckResult:
+    env = {
+        "PGHOST": target.connection.db_host,
+        "PGPORT": str(target.connection.db_port),
+        "PGDATABASE": target.connection.db_name,
+        "PGUSER": target.connection.db_user,
+        "PGPASSWORD": target.connection.db_password,
+    }
+    exports = " ".join(f"{name}={sh_quote(value)}" for name, value in env.items())
+    command = f"{exports} psql -v ON_ERROR_STOP=1 -q -A -t -c {sh_quote(sql)}"
+    result = runner(command, 60)
+    if result.exit_code == 0:
+        return CheckResult("OK", f"{label}: {success}")
+    error = _command_error(result.stderr, result.stdout, "remote psql check failed")
+    return CheckResult("FAIL", f"{label}: {error}")
+
+
+def _tpch_backend_ssh_runner(target: Target, factory: SSHRunnerFactory | None) -> SSHRunner:
+    if factory is not None:
+        return factory(target)
+    client = SSHClient(
+        host=target.connection.db_host,
+        port=target.connection.ssh_port,
+        user=target.connection.ssh_user,
+        password=target.connection.ssh_password,
+    )
+    return client.run
+
+
+def _fake_tpch_run_for_check(root: Path, target_id: str, scale_factor: int, config) -> object:
+    from automan_core.models import TpchRunSpec
+
+    threshold = config.compress_threshold[0] if config.compress_threshold else None
+    return TpchRunSpec(
+        run_id=f"check-{target_id}-sf{scale_factor}",
+        target_id=target_id,
+        stage="tpch-load",
+        ddl_profile="ym-mars3",
+        compress_threshold=threshold,
+        scale_factor=scale_factor,
+        query_streams=config.query_streams[0] if config.query_streams else 1,
+        run_mins=config.run_mins[0] if config.run_mins else 0,
+        run_dir=root / "runs" / ".check",
+        benchmark_dir=root / "runs" / ".check" / "benchmark",
+        database_dir=root / "runs" / ".check" / "database",
+        logs_dir=root / "runs" / ".check" / "logs",
+        collector_dir=root / "runs" / ".check" / "collectors",
+    )
+
+
+def _tpch_data_dir(root: Path, template: str, scale_factor: int) -> Path:
+    return _resolve_root_path(root, template.format(scale_factor=scale_factor))
+
+
+def _check_tpch_data(root: Path, config, scale_factor: int) -> list[CheckResult]:
+    mode = config.data_prepare.mode.lower()
+    if mode == "skip":
+        return [CheckResult("HINT", f"TPC-H data check skipped for scale_factor={scale_factor}")]
+    status = tpch_data_status(root, config, scale_factor)
+    data_dir = status["data_dir"]
+    if status["ready"]:
+        return [CheckResult("OK", f"TPC-H data ready: scale_factor={scale_factor} {data_dir}")]
+    if status["empty"]:
+        return [CheckResult("FAIL", f"empty TPC-H data file(s) under {data_dir}: {', '.join(status['empty'])}")]
+    if mode == "existing":
+        return [CheckResult("FAIL", f"TPC-H data file(s) missing under {data_dir}: {', '.join(status['missing'])}")]
+    if mode != "auto":
+        return [CheckResult("FAIL", f"unsupported tpch.data_prepare.mode: {config.data_prepare.mode}")]
+    source_dir = _resolve_root_path(root, config.data_prepare.source_dir)
+    dbgen_path = _tpch_dbgen_path(source_dir, config.data_prepare.dbgen_command)
+    if source_dir.exists() or dbgen_path.exists():
+        return [
+            CheckResult(
+                "WARN",
+                f"TPC-H data will be generated automatically for scale_factor={scale_factor}: {data_dir}",
+            )
+        ]
+    return [
+        CheckResult("FAIL", f"TPC-H dbgen source not found: {source_dir}"),
+        CheckResult("HINT", f"provide {config.data_prepare.generator} source under {source_dir}, or set tpch.data_prepare.mode=existing with prepared data"),
+    ]
+
+
+def _tpch_dbgen_path(source_dir: Path, dbgen_command: str) -> Path:
+    command = dbgen_command.strip()
+    if command.startswith("./"):
+        return source_dir / command[2:]
+    path = Path(command)
+    if path.is_absolute():
+        return path
+    return source_dir / command
+
+
+def _resolve_root_path(root: Path, value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else root / path
 
 
 def check_database_connectivity(root: Path, target: Target, local_runner: LocalRunner = subprocess.run) -> list[CheckResult]:
@@ -223,6 +406,20 @@ def check_ssh_fetch(
         CheckResult("FAIL", f"{label}: remote SFTP fetch unavailable: {error}"),
         CheckResult("HINT", "ensure SSH credentials allow SFTP subsystem and file download from config_workdir"),
     ]
+
+
+def check_mxgate_readiness(target: Target, mxgate: object) -> list[CheckResult]:
+    host = target.connection.db_host
+    port = target.connection.ssh_port
+    user = str(getattr(mxgate, "user", target.connection.ssh_user))
+    password = str(getattr(mxgate, "password", target.connection.ssh_password))
+    binary = str(getattr(mxgate, "binary", "mxgate"))
+    workdir = str(getattr(mxgate, "workdir", "/home/mxadmin/automan"))
+    label = f"mxgate@{host}"
+    runner = SSHClient(host=host, port=port, user=user, password=password).run
+    results = [check_ssh_command(binary, label, runner)]
+    results.extend(check_ssh_workspace(workdir, label, runner))
+    return results
 
 
 def _check_host_collectors(

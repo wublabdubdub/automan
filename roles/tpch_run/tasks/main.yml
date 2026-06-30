@@ -1,0 +1,54 @@
+---
+- name: Run TPC-H job through automan CLI
+  ansible.builtin.command:
+    argv: "{{ [automan_python, '-m', 'automan_core', 'run', '-i', automan_config_file] + ((stage | default('') | length > 0) | ternary(['--stage', stage], [])) }}"
+  args:
+    chdir: "{{ automan_root }}"
+  register: tpch_run_result
+  failed_when: false
+  tags:
+    - tpch_run
+
+- name: Show TPC-H run output
+  ansible.builtin.debug:
+    var: tpch_run_result.stdout_lines
+  when:
+    - tpch_run_result.rc == 0
+    - tpch_run_result.stdout_lines is defined
+  tags:
+    - tpch_run
+
+- name: Show formatted TPC-H run failure
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ (tpch_run_result.stdout_lines | default([]))[-80:] }}"
+  loop_control:
+    label: ""
+  when:
+    - tpch_run_result.rc != 0
+    - tpch_run_result.stdout_lines | default([]) | length > 0
+  tags:
+    - tpch_run
+
+- name: Show formatted TPC-H run stderr
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ tpch_run_result.stderr_lines | default([]) }}"
+  loop_control:
+    label: ""
+  when:
+    - tpch_run_result.rc != 0
+    - tpch_run_result.stderr_lines | default([]) | length > 0
+  tags:
+    - tpch_run
+
+- name: Fail after formatted TPC-H run output
+  ansible.builtin.fail:
+    msg: >-
+      {{ (tpch_run_result.stdout | default('') | regex_search('(?m)^\[FAIL\].*')) | default('TPC-H run failed', true) }}
+      {% set hints = tpch_run_result.stdout | default('') | regex_findall('(?m)^\[HINT\].*') %}
+      {% if hints | length > 0 %} | {{ hints[-3:] | join(' | ') }}{% endif %}
+      (rc={{ tpch_run_result.rc }}; command: {{ automan_python }} -m automan_core run -i {{ automan_config_file }}{% if stage | default('') | length > 0 %} --stage {{ stage }}{% endif %})
+  when: tpch_run_result.rc != 0
+  tags:
+    - tpch_run

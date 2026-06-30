@@ -5,9 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from automan_core.checks import check_collector_readiness
+from automan_core import cli
+from automan_core.checks import check_collector_readiness, check_task_readiness
+from automan_core.config import write_yaml
 from automan_core.models import CollectorConfig, ConnectionInfo, DatabaseProfile, PerfCollectorConfig, SystemCollectorConfig, Target
 from automan_core.ssh import CommandResult
+from automan_core.task_runner import load_task_definition
 
 
 class ChecksTest(unittest.TestCase):
@@ -68,9 +71,133 @@ class ChecksTest(unittest.TestCase):
         self.assertIn("remote SFTP fetch unavailable", text)
         self.assertIn("SFTP subsystem disabled", text)
 
+    def test_ap_check_fails_when_query_set_is_missing(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _copy_conf_file(repo, root, "conf/ap/base.yml")
+            _copy_conf_file(repo, root, "conf/ap/targets/ym-mars3.yml")
+            _copy_conf_file(repo, root, "configs/database-profiles/ymatrix/mars3-master-only.yaml")
+            inventory = root / "automan.yml"
+            data = cli._compose_inventory(root, "ap", ["ym-mars3"])
+            data["all"]["vars"]["collectors"]["enabled"] = False
+            write_yaml(inventory, data)
+            task = load_task_definition(root, inventory)
+
+            results = check_task_readiness(root, task, local_runner=psql_ok_runner)
+
+            text = "\n".join(result.text for result in results)
+            self.assertTrue(any(result.level == "FAIL" for result in results), text)
+            self.assertIn("AP query directory not found", text)
+
+    def test_tpch_check_auto_mode_allows_missing_data_when_generator_is_available(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inventory = _write_tpch_check_inventory(repo, root)
+            (root / "tools/tpch-dbgen").mkdir(parents=True)
+            task = load_task_definition(root, inventory)
+
+            results = check_task_readiness(root, task, local_runner=psql_ok_runner)
+
+            text = "\n".join(result.text for result in results)
+            self.assertFalse(any(result.level == "FAIL" for result in results), text)
+            self.assertTrue(any(result.level == "WARN" and "will be generated" in result.text for result in results), text)
+
+    def test_tpch_check_auto_mode_fails_when_generator_is_missing(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inventory = _write_tpch_check_inventory(repo, root)
+            task = load_task_definition(root, inventory)
+
+            results = check_task_readiness(root, task, local_runner=psql_ok_runner)
+
+            text = "\n".join(result.text for result in results)
+            self.assertTrue(any(result.level == "FAIL" for result in results), text)
+            self.assertIn("TPC-H dbgen source not found", text)
+
+    def test_tpch_check_existing_mode_fails_when_load_data_is_missing(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inventory = _write_tpch_check_inventory(repo, root)
+            data = cli._compose_inventory(root, "tpch", ["pg"])
+            data["all"]["vars"]["collectors"]["enabled"] = False
+            data["all"]["vars"]["tpch"]["backend"]["type"] = "internal"
+            data["all"]["vars"]["tpch"]["data_prepare"]["mode"] = "existing"
+            write_yaml(inventory, data)
+            task = load_task_definition(root, inventory)
+
+            results = check_task_readiness(root, task, local_runner=psql_ok_runner)
+
+            text = "\n".join(result.text for result in results)
+            self.assertTrue(any(result.level == "FAIL" for result in results), text)
+            self.assertIn("TPC-H data file(s) missing", text)
+
+    def test_tpch_check_fails_when_data_files_are_empty(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inventory = _write_tpch_check_inventory(repo, root)
+            data_dir = root / "benchmarks/tpch/data/sf1"
+            data_dir.mkdir(parents=True)
+            for table in ["region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem"]:
+                (data_dir / f"{table}.tbl").write_text("", encoding="utf-8")
+            task = load_task_definition(root, inventory)
+
+            results = check_task_readiness(root, task, local_runner=psql_ok_runner)
+
+            text = "\n".join(result.text for result in results)
+            self.assertTrue(any(result.level == "FAIL" for result in results), text)
+            self.assertIn("empty TPC-H data file(s)", text)
+
+    def test_tpch_ymatrix_backend_check_uses_db_host_and_remote_tools(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inventory = _write_tpch_ymatrix_backend_inventory(repo, root)
+            task = load_task_definition(root, inventory)
+            calls: list[str] = []
+
+            def runner(command: str, timeout: int) -> CommandResult:
+                calls.append(command)
+                return CommandResult(command, 0, "1\n", "")
+
+            results = check_task_readiness(root, task, local_runner=psql_ok_runner, ssh_runner_factory=lambda target: runner)
+
+            text = "\n".join(result.text for result in results)
+            self.assertFalse(any(result.level == "FAIL" for result in results), text)
+            self.assertIn("TPC-H YMatrix backend source ready", text)
+            self.assertIn("ymatrix_mars3@10.9.8.7", text)
+            self.assertTrue(any("command -v psql" in call for call in calls), calls)
+            self.assertTrue(any("command -v make" in call for call in calls), calls)
+            self.assertTrue(any("command -v gcc" in call for call in calls), calls)
+            self.assertTrue(any("command -v ssh" in call for call in calls), calls)
+            self.assertTrue(any("command -v scp" in call for call in calls), calls)
+            self.assertTrue(any("PGHOST='10.9.8.7'" in call and "select 1;" in call for call in calls), calls)
+            self.assertTrue(any("gp_segment_configuration" in call for call in calls), calls)
+
+    def test_tpch_ymatrix_backend_check_fails_when_vendor_source_is_missing(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inventory = _write_tpch_ymatrix_backend_inventory(repo, root, copy_vendor=False)
+            task = load_task_definition(root, inventory)
+
+            results = check_task_readiness(root, task, local_runner=psql_ok_runner, ssh_runner_factory=lambda target: remote_ok_runner)
+
+            text = "\n".join(result.text for result in results)
+            self.assertTrue(any(result.level == "FAIL" for result in results), text)
+            self.assertIn("TPC-H YMatrix backend source not found or incomplete", text)
+
 
 def missing_perf_runner(command, **kwargs):
     return subprocess.CompletedProcess(args=command, returncode=1, stdout="", stderr="perf not found")
+
+
+def psql_ok_runner(command, **kwargs):
+    return subprocess.CompletedProcess(args=command, returncode=0, stdout="1\n", stderr="")
 
 
 def remote_unwritable_runner(command: str, timeout: int) -> CommandResult:
@@ -114,6 +241,50 @@ def _remote_connection() -> ConnectionInfo:
         db_password="secret",
         execution_host="bench.example.test",
     )
+
+
+def _copy_conf_file(src_root: Path, dst_root: Path, relative: str) -> None:
+    _copy_file(src_root / relative, dst_root / relative)
+
+
+def _copy_file(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def _write_tpch_check_inventory(repo: Path, root: Path) -> Path:
+    _copy_conf_file(repo, root, "conf/tpch/base.yml")
+    _copy_conf_file(repo, root, "conf/tpch/targets/pg.yml")
+    _copy_conf_file(repo, root, "configs/database-profiles/postgresql/heap-single-node.yaml")
+    for source in (repo / "benchmarks/tpch/schema/pg").glob("*.sql"):
+        _copy_file(source, root / source.relative_to(repo))
+    for source in (repo / "benchmarks/tpch/queries/standard").glob("*.sql"):
+        _copy_file(source, root / source.relative_to(repo))
+    inventory = root / "automan.yml"
+    data = cli._compose_inventory(root, "tpch", ["pg"])
+    data["all"]["vars"]["collectors"]["enabled"] = False
+    data["all"]["vars"]["tpch"]["backend"]["type"] = "internal"
+    write_yaml(inventory, data)
+    return inventory
+
+
+def _write_tpch_ymatrix_backend_inventory(repo: Path, root: Path, copy_vendor: bool = True) -> Path:
+    _copy_conf_file(repo, root, "conf/tpch/base.yml")
+    _copy_conf_file(repo, root, "conf/tpch/targets/ym-mars3.yml")
+    _copy_conf_file(repo, root, "configs/database-profiles/ymatrix/mars3-master-only.yaml")
+    if copy_vendor:
+        for source in [
+            repo / "tools/ymatrix-tpch/tpch.sh",
+            repo / "tools/ymatrix-tpch/rollout.sh",
+        ]:
+            _copy_file(source, root / source.relative_to(repo))
+    inventory = root / "automan.yml"
+    data = cli._compose_inventory(root, "tpch", ["ym-mars3"])
+    data["all"]["vars"]["collectors"]["enabled"] = False
+    data["all"]["children"]["ymatrix_mars3"]["vars"]["db_host"] = "10.9.8.7"
+    data["all"]["children"]["ymatrix_mars3"]["vars"]["config_host"] = "10.1.1.1"
+    write_yaml(inventory, data)
+    return inventory
 
 
 if __name__ == "__main__":

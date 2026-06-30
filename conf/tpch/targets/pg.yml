@@ -1,0 +1,22 @@
+# PostgreSQL heap single-node target fragment for TPC-H benchmark.
+all:
+  children:
+    pg:
+      vars:
+        db_type: postgresql
+        storage_engine: heap
+        test_mode: single_node
+        tpch_ddl_profile: pg
+
+        db_host: 192.168.100.29
+        db_port: 5232
+        db_name: postgres
+        db_user: zhangchen
+        db_password: ""
+
+        config_user: 12pg
+        config_password: ""
+        config_workdir: /home/12pg/automan
+
+        database_parameters: {}
+        manual_parameter_commands: []

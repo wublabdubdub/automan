@@ -1,0 +1,62 @@
+# TPC-H inventory base. Compose targets with:
+#   ./configure -t tpch -c pg,ym-heap,ym-mars3 -o automan.yml
+all:
+  vars:
+    benchmark: tpch
+    job_id:
+
+    tpch_stages: [tpch-load, tpch-query]
+    compress_threshold: [1200, 4096, 8192, 32768]
+
+    tpch:
+      scale_factors: [1]
+      query_streams: [1]
+      run_mins: [0]
+      query_set: standard
+      data_dir: benchmarks/tpch/data/sf{scale_factor}
+      schema_dir: benchmarks/tpch/schema
+      query_dir: benchmarks/tpch/queries
+      backend:
+        type: ymatrix-tpch
+        source_dir: tools/ymatrix-tpch
+        remote_dir: runs/{run_id}/ymatrix-tpch
+        database_type: matrixdb
+        access_method: mars3
+        load_data_type: mxgate
+        optimizer: "off"
+        preheating_data: true
+        explain_analyze: false
+        greenplum_path: ""
+      data_prepare:
+        mode: auto
+        generator: dbgen
+        source_dir: tools/tpch-dbgen
+        build_command: make
+        dbgen_command: ./dbgen
+        force: false
+
+    collectors:
+      enabled: true
+      system:
+        enabled: true
+        interval_seconds: 1
+        host_roles: [database]
+        tools: [vmstat, iostat, pidstat, mpstat]
+      perf:
+        enabled: false
+        phases: [tpch-load, tpch-query]
+        host_roles: [database]
+        frequency: 99
+        call_graph: fp
+        record_scope: system
+
+  children:
+    bench:
+      hosts:
+        bench01:
+          ansible_host: 172.16.100.143
+          ansible_port: 22
+          ansible_user: root
+          ansible_password: ""
+          ansible_connection: local
+          automan_workdir: /root/automan

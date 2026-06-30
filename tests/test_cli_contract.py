@@ -369,8 +369,22 @@ all:
         self.assertEqual(args.inventory, "automan.yml")
         self.assertEqual(args.stage, "load")
 
+        args = parser.parse_args(["run", "-i", "automan.yml", "--stage", "ap-query"])
+        self.assertEqual(args.stage, "ap-query")
+
+        args = parser.parse_args(["run", "-i", "automan.yml", "--stage", "tpch-query"])
+        self.assertEqual(args.stage, "tpch-query")
+
         with self.assertRaises(SystemExit):
             parser.parse_args(["run", "-i", "automan.yml", "--stage", "invalid"])
+
+    def test_tpch_wrapper_declares_stage_contract(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        text = (repo / "tpch.yml").read_text(encoding="utf-8")
+
+        self.assertIn("tpch-load", text)
+        self.assertIn("tpch-query", text)
+        self.assertIn("playbooks/tpch.yml", text)
 
     def test_progress_command_accepts_watch_optional_seconds(self) -> None:
         parser = cli.build_parser()
@@ -382,17 +396,45 @@ all:
         self.assertEqual(args.job, "job1")
         self.assertEqual(args.watch, 7)
 
-    def test_delete_command_uses_job_id_and_force_flag(self) -> None:
+    def test_list_command_accepts_benchmark_type(self) -> None:
         parser = cli.build_parser()
-        args = parser.parse_args(["delete", "job1", "-f"])
+        args = parser.parse_args(["list"])
+        self.assertEqual(args.command, "list")
+        self.assertEqual(args.type, "tpcc")
+
+        args = parser.parse_args(["list", "-t", "ts", "--job", "job-ts"])
+        self.assertEqual(args.type, "ts")
+        self.assertEqual(args.job, "job-ts")
+
+        args = parser.parse_args(["list", "-t", "ap", "--job", "job-ap"])
+        self.assertEqual(args.type, "ap")
+        self.assertEqual(args.job, "job-ap")
+
+        args = parser.parse_args(["list", "-t", "tpch", "--job", "job-tpch"])
+        self.assertEqual(args.type, "tpch")
+        self.assertEqual(args.job, "job-tpch")
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["list", "-t", "unknown"])
+
+    def test_delete_command_uses_result_ids_and_force_flag(self) -> None:
+        parser = cli.build_parser()
+        args = parser.parse_args(["delete", "id1", "id2", "-f"])
         self.assertEqual(args.command, "delete")
-        self.assertEqual(args.job_id, "job1")
+        self.assertEqual(args.ids, ["id1", "id2"])
         self.assertTrue(args.force)
 
     def test_delete_command_does_not_accept_yes_alias(self) -> None:
         parser = cli.build_parser()
         with self.assertRaises(SystemExit):
             parser.parse_args(["delete", "pg-w100-c500", "--yes"])
+
+    def test_clean_command_accepts_job_and_force(self) -> None:
+        parser = cli.build_parser()
+        args = parser.parse_args(["clean", "--job", "job1", "-f"])
+        self.assertEqual(args.command, "clean")
+        self.assertEqual(args.job, "job1")
+        self.assertTrue(args.force)
 
     def test_report_missing_job_prints_fail_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

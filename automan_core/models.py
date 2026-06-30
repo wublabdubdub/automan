@@ -135,3 +135,193 @@ class RunSpec:
     work_dir: Path
     benchmark_run_dir: Path
     skip_destroy: bool = False
+
+
+@dataclass(frozen=True)
+class KafkaConfig:
+    host: str
+    port: int
+    user: str
+    password: str
+    kafka_bin: str
+    bootstrap_server: str
+    topic: str
+    partitions: list[int]
+    replication_factor: int
+    recreate_topic: bool = True
+
+
+@dataclass(frozen=True)
+class MxgateConfig:
+    user: str
+    password: str
+    workdir: str
+    binary: str
+    source: str
+    transform: str
+    writer: str
+    delimiter: str
+    format: str
+    time_format: str
+    stream_use_gzip: str
+    interval_ms: int = 50
+    bytes_limit: int = 67108864
+    stream_prepared: int = 36
+    write_buffer_size: int = 1048576
+    compress_pool_size: int = 4096
+    max_seg_conn: int = 128
+    seg_conn_timeout_millis: int = 30000
+    insert_timeout: int = 0
+    enable_event_trigger: bool = False
+
+
+@dataclass(frozen=True)
+class TsWriteConfig:
+    table: str
+    workers: list[int]
+    rate_per_worker: list[int]
+    vins: list[int]
+    vin_interval: list[str]
+    duration_seconds: list[int]
+    pressure_level: str
+    pressure_profiles: dict[str, dict[str, object]]
+    producer_fast_mode: bool
+    producer_lead_seconds: int
+    monitor_interval_seconds: int
+    lag_drain_timeout_seconds: int
+    require_zero_lag: bool
+
+
+@dataclass(frozen=True)
+class TsQueryConfig:
+    dependency_mode: str
+    rounds: list[int]
+    warmup_rounds: list[int]
+    timeout_seconds: int
+
+
+@dataclass(frozen=True)
+class PointQueryConfig:
+    dependency_mode: str
+    rounds: list[int]
+    warmup_rounds: list[int]
+    sample_size: list[int]
+    timeout_seconds: int
+
+
+@dataclass(frozen=True)
+class TsConfig:
+    stages: list[str]
+    compress_threshold: list[int]
+    kafka: KafkaConfig
+    mxgate: MxgateConfig
+    write: TsWriteConfig
+    query: TsQueryConfig
+    point_query: PointQueryConfig
+
+
+@dataclass(frozen=True)
+class TsRunSpec:
+    run_id: str
+    target_id: str
+    stage: str
+    compress_threshold: int
+    target_table: str
+    kafka_topic: str
+    work_dir: Path
+    run_dir: Path
+    benchmark_dir: Path
+    database_dir: Path
+    logs_dir: Path
+    collector_dir: Path
+    run_mins: int = 1
+
+
+@dataclass(frozen=True)
+class ApQueryConfig:
+    source_table: str
+    rounds: list[int]
+    warmup_rounds: list[int]
+    timeout_seconds: int
+    query_set: str
+
+
+@dataclass(frozen=True)
+class ApConfig:
+    stages: list[str]
+    compress_threshold: list[int]
+    query: ApQueryConfig
+
+
+@dataclass(frozen=True)
+class ApRunSpec:
+    run_id: str
+    target_id: str
+    stage: str
+    compress_threshold: int
+    source_table: str
+    query_set: str
+    rounds: int
+    warmup_rounds: int
+    run_dir: Path
+    benchmark_dir: Path
+    database_dir: Path
+    logs_dir: Path
+    collector_dir: Path
+    run_mins: int = 1
+
+
+@dataclass(frozen=True)
+class TpchDataPrepareConfig:
+    mode: str = "auto"
+    generator: str = "dbgen"
+    source_dir: str = "tools/tpch-dbgen"
+    build_command: str = "make"
+    dbgen_command: str = "./dbgen"
+    force: bool = False
+
+
+@dataclass(frozen=True)
+class TpchBackendConfig:
+    type: str = "ymatrix-tpch"
+    source_dir: str = "tools/ymatrix-tpch"
+    remote_dir: str = "runs/{run_id}/ymatrix-tpch"
+    database_type: str = "matrixdb"
+    access_method: str = "mars3"
+    load_data_type: str = "mxgate"
+    optimizer: str = "off"
+    preheating_data: bool = True
+    explain_analyze: bool = False
+    greenplum_path: str = ""
+
+
+@dataclass(frozen=True)
+class TpchConfig:
+    stages: list[str]
+    compress_threshold: list[int]
+    scale_factors: list[int]
+    query_streams: list[int]
+    run_mins: list[int]
+    query_set: str
+    data_dir: str
+    schema_dir: str
+    query_dir: str
+    data_prepare: TpchDataPrepareConfig
+    backend: TpchBackendConfig
+
+
+@dataclass(frozen=True)
+class TpchRunSpec:
+    run_id: str
+    target_id: str
+    stage: str
+    ddl_profile: str
+    compress_threshold: int | None
+    scale_factor: int
+    query_streams: int
+    run_mins: int
+    run_dir: Path
+    benchmark_dir: Path
+    database_dir: Path
+    logs_dir: Path
+    collector_dir: Path

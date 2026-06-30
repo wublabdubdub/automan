@@ -1,0 +1,71 @@
+---
+- name: Ensure TPC-H run parent directories exist
+  ansible.builtin.file:
+    path: "{{ automan_root }}/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - runs
+    - runs/jobs
+    - work/tpch
+    - benchmarks/tpch/data
+  tags:
+    - tpch_prepare
+
+- name: Validate TPC-H inventory before run
+  ansible.builtin.command:
+    argv:
+      - "{{ automan_python }}"
+      - -m
+      - automan_core
+      - validate
+      - -i
+      - "{{ automan_config_file }}"
+  args:
+    chdir: "{{ automan_root }}"
+  register: tpch_prepare_result
+  changed_when: false
+  failed_when: false
+  tags:
+    - tpch_prepare
+
+- name: Show formatted TPC-H validation failure
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ tpch_prepare_result.stdout_lines | default([]) }}"
+  loop_control:
+    label: ""
+  when:
+    - tpch_prepare_result.rc != 0
+    - tpch_prepare_result.stdout_lines | default([]) | length > 0
+  tags:
+    - tpch_prepare
+
+- name: Show formatted TPC-H validation stderr
+  ansible.builtin.debug:
+    msg: "{{ item }}"
+  loop: "{{ tpch_prepare_result.stderr_lines | default([]) }}"
+  loop_control:
+    label: ""
+  when:
+    - tpch_prepare_result.rc != 0
+    - tpch_prepare_result.stderr_lines | default([]) | length > 0
+  tags:
+    - tpch_prepare
+
+- name: Fail after formatted TPC-H validation output
+  ansible.builtin.fail:
+    msg: >-
+      {{ (tpch_prepare_result.stdout | default('') | regex_search('(?m)^\[FAIL\].*')) | default('TPC-H inventory validation failed', true) }}
+      {% set hints = tpch_prepare_result.stdout | default('') | regex_findall('(?m)^\[HINT\].*') %}
+      {% if hints | length > 0 %} | {{ hints[-3:] | join(' | ') }}{% endif %}
+      (rc={{ tpch_prepare_result.rc }}; command: {{ automan_python }} -m automan_core validate -i {{ automan_config_file }})
+  when: tpch_prepare_result.rc != 0
+  tags:
+    - tpch_prepare
+
+- name: Remind that TPC-H data preparation is controlled by inventory
+  ansible.builtin.debug:
+    msg: "TPC-H real data preparation follows tpch.data_prepare; Automan never uses placeholder data files."
+  tags:
+    - tpch_prepare

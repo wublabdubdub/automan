@@ -10,7 +10,7 @@ from automan_core.config import load_yaml, write_json
 from automan_core.executor import FATAL_OUTPUT_PATTERNS
 
 
-DEFAULT_TEMPLATE = """# TPC-C Job Report
+DEFAULT_TEMPLATE = """# {{ title }}
 
 ## Job
 
@@ -73,10 +73,11 @@ def generate_report(root: Path, job_id: str) -> Path:
     write_json(agent_context_path, agent_context)
 
     context = {
+        "title": _report_title(plan),
         "job": _render_job(job_dir, plan, job_state, agent_context_path),
-        "matrix": _render_matrix(plan.get("matrix", {})),
+        "matrix": _render_matrix(plan.get("matrix", {}), plan.get("benchmark")),
         "targets": _render_targets(plan.get("targets", [])),
-        "benchmark_results": _render_benchmark_results(agent_context["parsed_results"]),
+        "benchmark_results": _render_benchmark_results(agent_context["parsed_results"], plan.get("benchmark")),
         "resource_artifacts": _render_artifacts(agent_context["artifact_paths"]["resource"], include_samples=True),
         "collection_status": _render_collection_status(agent_context["artifact_paths"].get("manifests", [])),
         "perf_artifacts": _render_artifacts(agent_context["artifact_paths"]["perf"], include_samples=False),
@@ -114,6 +115,17 @@ def _job_state_path(job_dir: Path) -> Path:
     return job_dir / "job.json"
 
 
+def _report_title(plan: dict[str, Any]) -> str:
+    benchmark = str(plan.get("benchmark", "tpcc")).lower()
+    if benchmark == "tpch":
+        return "TPC-H Objective Benchmark Report"
+    if benchmark == "ts":
+        return "TS Objective Benchmark Report"
+    if benchmark == "ap":
+        return "AP Objective Benchmark Report"
+    return "TPC-C Job Report"
+
+
 def _load_status(job_dir: Path) -> str:
     status_path = job_dir / "status.json"
     if not status_path.exists():
@@ -132,7 +144,24 @@ def _render_job(job_dir: Path, plan: dict[str, Any], job_state: dict[str, Any], 
     return "\n".join(lines)
 
 
-def _render_matrix(matrix: dict[str, Any]) -> str:
+def _render_matrix(matrix: dict[str, Any], benchmark: Any = None) -> str:
+    if benchmark == "tpch" or "tpch_stages" in matrix:
+        return "\n".join(
+            [
+                f"- compress_threshold: {', '.join(map(str, matrix.get('compress_threshold', [])))}",
+                f"- tpch_stages: {', '.join(map(str, matrix.get('tpch_stages', [])))}",
+                f"- scale_factors: {', '.join(map(str, matrix.get('scale_factors', [])))}",
+                f"- query_streams: {', '.join(map(str, matrix.get('query_streams', [])))}",
+                f"- run_mins: {', '.join(map(str, matrix.get('run_mins', [])))}",
+            ]
+        )
+    if "compress_threshold" in matrix or "ts_stages" in matrix:
+        return "\n".join(
+            [
+                f"- compress_threshold: {', '.join(map(str, matrix.get('compress_threshold', [])))}",
+                f"- ts_stages: {', '.join(map(str, matrix.get('ts_stages', [])))}",
+            ]
+        )
     return "\n".join(
         [
             f"- warehouses: {', '.join(map(str, matrix.get('warehouses', [])))}",
@@ -155,7 +184,7 @@ def _render_targets(targets: list[dict[str, Any]]) -> str:
                 f"  - database: {connection.get('db_host', '-')}:{connection.get('db_port', '-')}/{connection.get('db_name', '-')}",
                 f"  - user: {connection.get('db_user', '-')}",
                 f"  - password: {connection.get('db_password', '***')}",
-                f"  - ddl_profile: {target.get('ddl_profile', '-')}",
+                f"  - ddl_profile: {target.get('ddl_profile') or target.get('tpch_ddl_profile', '-')}",
                 f"  - manual_parameter_commands: {_command_count(target.get('manual_parameter_commands'))}",
             ]
         )
@@ -168,9 +197,13 @@ def _command_count(value: Any) -> str:
     return f"{len(value)} command(s)"
 
 
-def _render_benchmark_results(results: list[dict[str, Any]]) -> str:
+def _render_benchmark_results(results: list[dict[str, Any]], benchmark: Any = None) -> str:
     if not results:
         return "- none"
+    if benchmark == "tpch" or any(result.get("stage") in {"tpch-load", "tpch-query"} for result in results):
+        return _render_tpch_results(results)
+    if any(result.get("stage") in {"ts-write", "ts-query", "point-query"} for result in results):
+        return _render_ts_results(results)
     lines = [
         "| Run | Status | Target | Warehouses | Terminals | Run Mins | Measured tpmC | Measured tpmTOTAL | Session Start | Session End | Elapsed Seconds | Result Dir |",
         "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- | ---: | --- |",
@@ -197,6 +230,95 @@ def _render_benchmark_results(results: list[dict[str, Any]]) -> str:
             + " |"
         )
     return "\n".join(lines)
+
+
+def _render_tpch_results(results: list[dict[str, Any]]) -> str:
+    lines = [
+        "| Run | Stage | Status | Target | Backend | Schema | DDL Profile | Compress Threshold | Scale Factor | Streams | Run Mins | Table Data Size | Elapsed Seconds | Query Count | Avg ms | P50 ms | P95 ms | P99 ms | QphH | Errors | End Time | Remote Backend | Result Dir |",
+        "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |",
+    ]
+    for result in results:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _cell(result.get("run_id")),
+                    _cell(result.get("stage")),
+                    _cell(result.get("status")),
+                    _cell(result.get("target_id")),
+                    _cell(result.get("backend_type")),
+                    _cell(result.get("schema")),
+                    _cell(result.get("ddl_profile")),
+                    _cell(result.get("compress_threshold")),
+                    _cell(result.get("scale_factor")),
+                    _cell(result.get("query_streams")),
+                    _cell(result.get("run_mins")),
+                    _cell(result.get("table_data_size", result.get("table_data_size_bytes"))),
+                    _cell(result.get("elapsed_seconds")),
+                    _cell(result.get("query_count")),
+                    _cell(result.get("avg_ms")),
+                    _cell(result.get("p50_ms")),
+                    _cell(result.get("p95_ms")),
+                    _cell(result.get("p99_ms")),
+                    _cell(result.get("qphh", result.get("queries_per_hour"))),
+                    _cell(result.get("errors")),
+                    _cell(result.get("session_end")),
+                    f"`{_cell(result.get('remote_backend_dir'))}`",
+                    f"`{_cell(result.get('benchmark_result_dir'))}`",
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines)
+
+
+def _render_ts_results(results: list[dict[str, Any]]) -> str:
+    lines = [
+        "| Run | Stage | Status | Target | Table | Topic | Pressure | Compress Threshold | Table Data Size | Query Count | Avg ms | P95 ms | Produced Messages | Producer Actual QPS | Written Rows | Actual QPS | Final Lag | Hit Rate | Session Start | Session End | Result Dir |",
+        "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |",
+    ]
+    for result in results:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _cell(result.get("run_id")),
+                    _cell(result.get("stage")),
+                    _cell(result.get("status")),
+                    _cell(result.get("target_id")),
+                    _cell(result.get("target_table")),
+                    _cell(result.get("kafka_topic")),
+                    _cell(result.get("pressure_level")),
+                    _cell(result.get("compress_threshold")),
+                    _cell(result.get("table_data_size", result.get("table_data_size_bytes"))),
+                    _cell(result.get("query_count")),
+                    _cell(result.get("avg_ms")),
+                    _cell(result.get("p95_ms")),
+                    _cell(result.get("produced_messages")),
+                    _cell(result.get("producer_actual_qps")),
+                    _cell(result.get("written_rows")),
+                    _cell(_actual_qps(result)),
+                    _cell(result.get("final_lag")),
+                    _cell(result.get("hit_rate")),
+                    _cell(result.get("session_start")),
+                    _cell(result.get("session_end")),
+                    f"`{_cell(result.get('benchmark_result_dir'))}`",
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines)
+
+
+def _actual_qps(result: dict[str, Any]) -> float | None:
+    existing = _float_or_none(result.get("actual_qps"))
+    if existing is not None:
+        return existing
+    written_rows = _float_or_none(result.get("written_rows"))
+    duration_seconds = _float_or_none(result.get("duration_seconds"))
+    if written_rows is None or duration_seconds is None or duration_seconds <= 0:
+        return None
+    return round(written_rows / duration_seconds, 2)
 
 
 def _render_artifacts(artifacts: list[dict[str, Any]], include_samples: bool) -> str:
@@ -325,6 +447,22 @@ def _runs(plan: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _run_result(root: Path, run: dict[str, Any]) -> dict[str, Any]:
+    published = _load_published_result(root, run)
+    if published is not None and published.get("stage") in {"ts-write", "ts-query", "point-query", "ap-query", "tpch-load", "tpch-query"}:
+        result = dict(published)
+        result.setdefault("run_id", str(run.get("run_id", "-")))
+        result.setdefault("target_id", str(run.get("target_id", "-")))
+        result.setdefault("status", _run_status(root, run))
+        result.setdefault("benchmark_result_dir", str(_path_value(root, run, "benchmark_result_dir", "benchmark/result")))
+        result.setdefault("elapsed_seconds", _elapsed_seconds(result.get("session_start"), result.get("session_end")))
+        result.setdefault("command_results", _command_results(root, run))
+        result.setdefault("source_paths", [str(_path_value(root, run, "run_dir", "") / "result.json")])
+        table_size = _load_table_size(root, run)
+        if table_size and result.get("table_data_size") is None:
+            result["table_data_size"] = table_size.get("table_data_size")
+        if table_size and result.get("table_data_size_bytes") is None:
+            result["table_data_size_bytes"] = table_size.get("table_data_size_bytes")
+        return result
     result = {
         "run_id": str(run.get("run_id", "-")),
         "target_id": str(run.get("target_id", "-")),
@@ -345,6 +483,28 @@ def _run_result(root: Path, run: dict[str, Any]) -> dict[str, Any]:
     _merge_result_csv_sources(root, run, result)
     result["elapsed_seconds"] = _elapsed_seconds(result.get("session_start"), result.get("session_end"))
     return result
+
+
+def _load_published_result(root: Path, run: dict[str, Any]) -> dict[str, Any] | None:
+    path = _path_value(root, run, "run_dir", "") / "result.json"
+    if not path.exists():
+        return None
+    try:
+        loaded = load_yaml(path)
+    except (OSError, ValueError):
+        return None
+    return loaded if isinstance(loaded, dict) else None
+
+
+def _load_table_size(root: Path, run: dict[str, Any]) -> dict[str, Any] | None:
+    path = _path_value(root, run, "run_dir", "") / "database" / "table-size.json"
+    if not path.exists():
+        return None
+    try:
+        loaded = load_yaml(path)
+    except (OSError, ValueError):
+        return None
+    return loaded if isinstance(loaded, dict) else None
 
 
 def _merge_result_text_sources(root: Path, run: dict[str, Any], result: dict[str, Any]) -> None:
@@ -655,6 +815,13 @@ def _cell(value: Any) -> str:
         return "-"
     text = str(value)
     return text.replace("|", "\\|")
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def _load_template(root: Path) -> str:

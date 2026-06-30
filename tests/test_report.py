@@ -169,6 +169,126 @@ class ReportTest(unittest.TestCase):
             self.assertIn("job_state", agent_context)
             self.assertTrue(agent_context["failures"])
 
+    def test_generate_report_uses_tpch_fields_for_tpch_jobs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            job_dir = root / "runs/jobs/job-tpch"
+            load_dir = root / "runs/job-tpch-ymatrix_mars3-ct1200-sf10-q1-m0-tpch-load"
+            query_dir = root / "runs/job-tpch-ymatrix_mars3-ct1200-sf10-q1-m0-tpch-query"
+            load_dir.mkdir(parents=True)
+            query_dir.mkdir(parents=True)
+            write_yaml(
+                job_dir / "resolved-plan.yaml",
+                {
+                    "job_id": "job-tpch",
+                    "benchmark": "tpch",
+                    "matrix": {
+                        "compress_threshold": [1200],
+                        "tpch_stages": ["tpch-load", "tpch-query"],
+                        "scale_factors": [10],
+                        "query_streams": [1],
+                        "run_mins": [0],
+                    },
+                    "targets": [
+                        {
+                            "id": "ymatrix_mars3",
+                            "display_name": "YMatrix mars3",
+                            "tpch_ddl_profile": "ym-mars3",
+                            "connection": {
+                                "db_host": "172.16.100.29",
+                                "db_port": 5432,
+                                "db_name": "tpch",
+                                "db_user": "zhangchen",
+                                "db_password": "***",
+                            },
+                        }
+                    ],
+                    "runs": [
+                        {
+                            "run_id": load_dir.name,
+                            "target_id": "ymatrix_mars3",
+                            "stage": "tpch-load",
+                            "run_dir": str(load_dir),
+                            "benchmark_result_dir": str(load_dir / "benchmark/tpch-load"),
+                            "status_path": str(load_dir / "status.json"),
+                        },
+                        {
+                            "run_id": query_dir.name,
+                            "target_id": "ymatrix_mars3",
+                            "stage": "tpch-query",
+                            "run_dir": str(query_dir),
+                            "benchmark_result_dir": str(query_dir / "benchmark/tpch-query"),
+                            "status_path": str(query_dir / "status.json"),
+                        },
+                    ],
+                },
+            )
+            write_json(job_dir / "job.json", {"job_id": "job-tpch", "benchmark": "tpch", "status": "success"})
+            write_json(load_dir / "status.json", {"run_id": load_dir.name, "status": "success"})
+            write_json(query_dir / "status.json", {"run_id": query_dir.name, "status": "success"})
+            write_json(
+                load_dir / "result.json",
+                {
+                    "run_id": load_dir.name,
+                    "target_id": "ymatrix_mars3",
+                    "stage": "tpch-load",
+                    "status": "success",
+                    "backend_type": "ymatrix-tpch",
+                    "schema": "tpch",
+                    "remote_backend_dir": "/home/mxadmin/automan/runs/load/ymatrix-tpch",
+                    "ddl_profile": "ym-mars3",
+                    "compress_threshold": 1200,
+                    "scale_factor": 10,
+                    "query_streams": 1,
+                    "run_mins": 0,
+                    "loaded_tables": 8,
+                    "table_data_size": "10 GB",
+                    "elapsed_seconds": 123.4,
+                    "session_end": "2026-06-29T22:10:00",
+                },
+            )
+            write_json(
+                query_dir / "result.json",
+                {
+                    "run_id": query_dir.name,
+                    "target_id": "ymatrix_mars3",
+                    "stage": "tpch-query",
+                    "status": "success",
+                    "backend_type": "ymatrix-tpch",
+                    "schema": "tpch",
+                    "remote_backend_dir": "/home/mxadmin/automan/runs/query/ymatrix-tpch",
+                    "ddl_profile": "ym-mars3",
+                    "compress_threshold": 1200,
+                    "scale_factor": 10,
+                    "query_streams": 1,
+                    "run_mins": 0,
+                    "query_count": 22,
+                    "avg_ms": 115.8,
+                    "p50_ms": 107.9,
+                    "p95_ms": 164.3,
+                    "p99_ms": 187.1,
+                    "errors": 0,
+                    "qphh": 27923.69,
+                    "table_data_size": "10 GB",
+                    "elapsed_seconds": 2.8,
+                    "session_end": "2026-06-29T22:10:06",
+                },
+            )
+
+            report_path = generate_report(root, "job-tpch")
+
+            report = report_path.read_text(encoding="utf-8")
+            self.assertIn("TPC-H", report)
+            self.assertIn("Scale Factor", report)
+            self.assertIn("Compress Threshold", report)
+            self.assertIn("Query Count", report)
+            self.assertIn("Avg ms", report)
+            self.assertIn("ymatrix-tpch", report)
+            self.assertIn("tpch", report)
+            self.assertIn("Remote Backend", report)
+            self.assertIn("27923.69", report)
+            self.assertNotIn("Measured tpmC", report)
+
 
 if __name__ == "__main__":
     unittest.main()
