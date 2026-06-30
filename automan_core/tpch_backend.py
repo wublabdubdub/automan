@@ -273,12 +273,15 @@ def _rollout_command(remote_dir: str, target: Target, backend: TpchBackendConfig
     rendered_args = " ".join(shlex.quote(arg) for arg in args)
     if not variables["GREENPLUM_PATH"]:
         rendered_args = rendered_args.replace("''", '"${GREENPLUM_PATH:-}"', 1)
+    gen_data_dir = shlex.quote(variables["GEN_DATA_DIR"])
+    ext_host_data_dir = shlex.quote(variables["EXT_HOST_DATA_DIR"])
     return (
         f"{exports}; {greenplum_setup}; "
         f"cd {shlex.quote(remote_dir)} && "
         "{ "
         "chmod +x ./rollout.sh ./0*/rollout.sh ./01_gen_data/generate_data.sh ./01_gen_data/generate_queries.sh "
         "./04_load/*.sh 2>/dev/null || true; "
+        f"mkdir -p {gen_data_dir}/log {ext_host_data_dir}; "
         f"./rollout.sh {rendered_args}; "
         "}"
     )
