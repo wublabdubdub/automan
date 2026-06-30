@@ -200,6 +200,7 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertTrue(any("tar -xzf ymatrix-tpch.tar.gz" in command for command in remote.run_commands))
             self.assertTrue(any("sed -i 's/\\r$//'" in command and "dists.dss" in command for command in remote.run_commands))
             self.assertTrue(any("ConnectTimeout=0 -n -f" in command and "ConnectTimeout=5" in command for command in remote.run_commands))
+            self.assertTrue(any("pgrep -fc" in command and "generate_data.sh" in command for command in remote.run_commands))
             self.assertTrue(any("./rollout.sh" in command for command in remote.run_commands))
             self.assertTrue(any("seq 1 60" in command and "select 1" in command for command in remote.run_commands))
             self.assertTrue(any("mkdir -p" in command and "/generated/log" in command for command in remote.run_commands))

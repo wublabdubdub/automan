@@ -309,7 +309,16 @@ def _normalize_remote_scripts_command() -> str:
 
 
 def _patch_remote_scripts_command() -> str:
-    return "sed -i 's/ssh -o ConnectTimeout=0 -n -f \\$i/ssh -o ConnectTimeout=5 \\$i/g' ./01_gen_data/rollout.sh"
+    code = r'''
+from pathlib import Path
+
+path = Path("01_gen_data/rollout.sh")
+text = path.read_text()
+old = """next_count=$(ssh -o ConnectTimeout=0 -n -f $i "bash -c 'ps -ef | grep generate_data.sh | grep -v grep | wc -l'" 2>&1 || true)"""
+new = """next_count=$(ssh -o ConnectTimeout=5 $i "pgrep -fc '[.]/generate_data.sh'" 2>&1 || true)"""
+path.write_text(text.replace(old, new))
+'''
+    return f"python3 -c {shlex.quote(code)}"
 
 
 def _prepare_segment_ext_dirs_command(database_type: str, ext_host_data_dir: str) -> str:
