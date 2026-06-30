@@ -27,7 +27,6 @@ all:
         preheating_data: true
         explain_analyze: false
         greenplum_path: ""
-        transfer_bind_address: ""
       data_prepare:
         mode: auto
         generator: dbgen

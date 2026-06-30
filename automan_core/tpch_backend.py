@@ -218,7 +218,6 @@ def _default_remote_client(target: Target, backend: TpchBackendConfig) -> Remote
         port=connection.ssh_port,
         user=connection.ssh_user,
         password=connection.ssh_password,
-        bind_address=backend.transfer_bind_address,
     )
 
 

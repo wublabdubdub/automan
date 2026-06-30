@@ -75,7 +75,6 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertEqual(task.tpch_config.backend.optimizer, "off")
             self.assertTrue(task.tpch_config.backend.preheating_data)
             self.assertFalse(task.tpch_config.backend.explain_analyze)
-            self.assertEqual(task.tpch_config.backend.transfer_bind_address, "")
 
     def test_ymatrix_backend_stage_flags_and_storage_rendering(self) -> None:
         from automan_core.tpch_backend import render_mars3_storage, stage_flags
