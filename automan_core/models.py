@@ -293,6 +293,7 @@ class TpchBackendConfig:
     preheating_data: bool = True
     explain_analyze: bool = False
     greenplum_path: str = ""
+    transfer_bind_address: str = ""
 
 
 @dataclass(frozen=True)

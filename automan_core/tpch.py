@@ -101,6 +101,7 @@ def load_tpch_config(vars_: dict[str, Any]) -> TpchConfig:
             preheating_data=_bool(raw_backend.get("preheating_data", True)),
             explain_analyze=_bool(raw_backend.get("explain_analyze", False)),
             greenplum_path=str(raw_backend.get("greenplum_path", "")),
+            transfer_bind_address=str(raw_backend.get("transfer_bind_address", "")),
         ),
     )
 

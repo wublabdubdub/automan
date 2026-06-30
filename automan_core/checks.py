@@ -118,7 +118,7 @@ def _check_ymatrix_tpch_backend(root: Path, task: TaskDefinition, ssh_runner_fac
         label = f"{target.id}@{target.connection.db_host}"
         runner = _tpch_backend_ssh_runner(target, ssh_runner_factory)
         results.extend(check_ssh_workspace(target.connection.remote_workdir, label, runner))
-        for tool in ["psql", "make", "gcc", "ssh", "scp"]:
+        for tool in ["psql", "make", "gcc", "ssh", "scp", "tar"]:
             results.append(check_ssh_command(tool, label, runner))
         results.append(_check_remote_psql(target, label, runner, "select 1;", "database connectivity ok"))
         if config.backend.database_type == "matrixdb" and config.backend.load_data_type == "mxgate":

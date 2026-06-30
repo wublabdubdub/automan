@@ -75,6 +75,7 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertEqual(task.tpch_config.backend.optimizer, "off")
             self.assertTrue(task.tpch_config.backend.preheating_data)
             self.assertFalse(task.tpch_config.backend.explain_analyze)
+            self.assertEqual(task.tpch_config.backend.transfer_bind_address, "")
 
     def test_ymatrix_backend_stage_flags_and_storage_rendering(self) -> None:
         from automan_core.tpch_backend import render_mars3_storage, stage_flags
@@ -164,6 +165,38 @@ class TpchBenchmarkTest(unittest.TestCase):
             self.assertEqual(result["backend_type"], "ymatrix-tpch")
             self.assertEqual(result["schema"], "tpch")
             self.assertIn("ymatrix-tpch", result["remote_backend_dir"])
+
+    def test_ymatrix_backend_uploads_tarball_instead_of_recursive_sftp(self) -> None:
+        from automan_core.tpch_backend import YMatrixTpchBackend
+
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _copy_tpch_runtime_files(repo, root)
+            source_dir = root / "tools/ymatrix-tpch"
+            source_dir.mkdir(parents=True)
+            (source_dir / "tpch.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+            (source_dir / "rollout.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+            (source_dir / "nested").mkdir()
+            (source_dir / "nested" / "file.txt").write_text("payload", encoding="utf-8")
+            inventory = root / "automan.yml"
+            data = cli._compose_inventory(root, "tpch", ["ym-mars3"])
+            data["all"]["vars"]["job_id"] = "job-tpch"
+            data["all"]["vars"]["compress_threshold"] = [1200]
+            data["all"]["vars"]["collectors"]["enabled"] = False
+            data["all"]["children"]["ymatrix_mars3"]["vars"]["db_host"] = "10.9.8.7"
+            write_yaml(inventory, data)
+            task = load_task_definition(root, inventory)
+            runs = build_tpch_run_specs(root, "job-tpch", task.targets, task.tpch_config, "tpch-load")
+            remote = FakeRemoteClient()
+            backend = YMatrixTpchBackend(remote_factory=lambda target: remote)
+
+            result = backend.run(root, task.targets[0], task.tpch_config, runs[0])
+
+            self.assertEqual(result["status"], "success")
+            self.assertFalse(remote.upload_dir_called)
+            self.assertTrue(any(call[0].name == "ymatrix-tpch.tar.gz" and call[1].endswith("/ymatrix-tpch.tar.gz") for call in remote.upload_file_calls))
+            self.assertTrue(any("tar -xzf ymatrix-tpch.tar.gz" in command for command in remote.run_commands))
 
     def test_tpch_inventory_validates_and_plans_three_ddl_profiles(self) -> None:
         repo = Path(__file__).resolve().parents[1]
@@ -581,6 +614,29 @@ class FakeYMatrixBackend:
             "elapsed_seconds": 1.0,
             "upstream_artifacts": {"local_dir": str(run.benchmark_dir / "upstream")},
         }
+
+
+class FakeRemoteClient:
+    def __init__(self) -> None:
+        self.run_commands: list[str] = []
+        self.upload_file_calls: list[tuple[Path, str]] = []
+        self.upload_dir_called = False
+
+    def run(self, command: str, timeout: int = 120) -> CommandResult:
+        self.run_commands.append(command)
+        return CommandResult(command, 0, "ok\n", "")
+
+    def upload_file(self, local_path: Path, remote_path: str) -> CommandResult:
+        self.upload_file_calls.append((local_path, remote_path))
+        return CommandResult(f"sftp put {local_path} {remote_path}", 0, remote_path, "")
+
+    def upload_dir(self, local_dir: Path, remote_dir: str) -> CommandResult:
+        self.upload_dir_called = True
+        return CommandResult(f"sftp put -r {local_dir} {remote_dir}", 0, remote_dir, "")
+
+    def download_dir(self, remote_dir: str, local_dir: Path) -> CommandResult:
+        local_dir.mkdir(parents=True, exist_ok=True)
+        return CommandResult(f"sftp get -r {remote_dir} {local_dir}", 0, str(local_dir), "")
 
 
 if __name__ == "__main__":

@@ -175,6 +175,7 @@ class ChecksTest(unittest.TestCase):
             self.assertTrue(any("command -v gcc" in call for call in calls), calls)
             self.assertTrue(any("command -v ssh" in call for call in calls), calls)
             self.assertTrue(any("command -v scp" in call for call in calls), calls)
+            self.assertTrue(any("command -v tar" in call for call in calls), calls)
             self.assertTrue(any("PGHOST='10.9.8.7'" in call and "select 1;" in call for call in calls), calls)
             self.assertTrue(any("gp_segment_configuration" in call for call in calls), calls)
 

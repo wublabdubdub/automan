@@ -10,11 +10,12 @@ from automan_core.ssh import CommandResult
 
 
 class RemoteClient:
-    def __init__(self, host: str, port: int, user: str, password: str) -> None:
+    def __init__(self, host: str, port: int, user: str, password: str, bind_address: str = "") -> None:
         self.host = host
         self.port = port
         self.user = user
         self.password = password
+        self.bind_address = bind_address
 
     def run(self, command: str, timeout: int = 120) -> CommandResult:
         client = self._connect()
@@ -88,17 +89,29 @@ class RemoteClient:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         use_password = bool(self.password)
-        client.connect(
-            hostname=self.host,
-            port=self.port,
-            username=self.user,
-            password=self.password or None,
-            timeout=10,
-            banner_timeout=10,
-            auth_timeout=10,
-            look_for_keys=not use_password,
-            allow_agent=not use_password,
-        )
+        bound_socket = None
+        if self.bind_address:
+            bound_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            bound_socket.bind((self.bind_address, 0))
+            bound_socket.settimeout(10)
+            bound_socket.connect((self.host, self.port))
+        try:
+            client.connect(
+                hostname=self.host,
+                port=self.port,
+                username=self.user,
+                password=self.password or None,
+                timeout=10,
+                banner_timeout=10,
+                auth_timeout=10,
+                look_for_keys=not use_password,
+                allow_agent=not use_password,
+                sock=bound_socket,
+            )
+        except Exception:
+            if bound_socket is not None:
+                bound_socket.close()
+            raise
         return client
 
     def _mkdir_p(self, sftp: paramiko.SFTPClient, remote_dir: str) -> None:

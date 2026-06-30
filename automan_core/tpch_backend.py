@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import tarfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -146,7 +147,7 @@ def normalize_backend_result(
 
 class YMatrixTpchBackend:
     def __init__(self, remote_factory: RemoteFactory | None = None) -> None:
-        self.remote_factory = remote_factory or _default_remote_factory
+        self.remote_factory = remote_factory
 
     def run(self, root: Path, target: Target, config: TpchConfig, run: TpchRunSpec) -> dict[str, Any]:
         backend = config.backend
@@ -159,18 +160,27 @@ class YMatrixTpchBackend:
             ended = datetime.now().isoformat()
             return _failed_backend_result(run, remote_dir, artifact_dir, started, ended, f"YMatrix TPC-H backend source not found: {source_dir}")
 
-        client = self.remote_factory(target)
+        client = self.remote_factory(target) if self.remote_factory is not None else _default_remote_client(target, backend)
         setup = client.run(f"rm -rf {shlex.quote(remote_dir)} && mkdir -p {shlex.quote(remote_dir)}", timeout=300)
         _write_command(run.logs_dir, "ymatrix-backend-setup", setup)
         if setup.exit_code != 0:
             ended = datetime.now().isoformat()
             return _failed_backend_result(run, remote_dir, artifact_dir, started, ended, _command_error(setup) or "remote backend setup failed")
 
-        upload = client.upload_dir(source_dir, remote_dir)
+        archive = run.logs_dir / "ymatrix-tpch.tar.gz"
+        _write_source_archive(source_dir, archive)
+        remote_archive = f"{remote_dir}/ymatrix-tpch.tar.gz"
+        upload = client.upload_file(archive, remote_archive)
         _write_command(run.logs_dir, "ymatrix-backend-upload", upload)
         if upload.exit_code != 0:
             ended = datetime.now().isoformat()
             return _failed_backend_result(run, remote_dir, artifact_dir, started, ended, _command_error(upload) or "remote backend upload failed")
+
+        extract = client.run(f"cd {shlex.quote(remote_dir)} && tar -xzf ymatrix-tpch.tar.gz && rm -f ymatrix-tpch.tar.gz", timeout=600)
+        _write_command(run.logs_dir, "ymatrix-backend-extract", extract)
+        if extract.exit_code != 0:
+            ended = datetime.now().isoformat()
+            return _failed_backend_result(run, remote_dir, artifact_dir, started, ended, _command_error(extract) or "remote backend extract failed")
 
         variables = render_backend_variables(target, backend, run)
         local_variables = run.logs_dir / "tpch_variables.sh"
@@ -201,13 +211,14 @@ class YMatrixTpchBackend:
         return result
 
 
-def _default_remote_factory(target: Target) -> RemoteClient:
+def _default_remote_client(target: Target, backend: TpchBackendConfig) -> RemoteClient:
     connection = target.connection
     return RemoteClient(
         host=connection.db_host,
         port=connection.ssh_port,
         user=connection.ssh_user,
         password=connection.ssh_password,
+        bind_address=backend.transfer_bind_address,
     )
 
 
@@ -240,6 +251,15 @@ def _write_command(logs_dir: Path, name: str, result: CommandResult) -> None:
     (logs_dir / f"{safe}.cmd").write_text(result.command, encoding="utf-8")
     (logs_dir / f"{safe}.stdout").write_text(result.stdout, encoding="utf-8")
     (logs_dir / f"{safe}.stderr").write_text(result.stderr, encoding="utf-8")
+
+
+def _write_source_archive(source_dir: Path, archive: Path) -> None:
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    if archive.exists():
+        archive.unlink()
+    with tarfile.open(archive, "w:gz") as tar:
+        for path in sorted(source_dir.rglob("*")):
+            tar.add(path, arcname=path.relative_to(source_dir).as_posix())
 
 
 def _parse_sql_timings(artifact_dir: Path) -> list[float]:
